@@ -1,0 +1,24 @@
+{
+  "id": "health-sync",
+  "name": "Health Sync",
+  "description": "Receives Apple HealthKit data from the oc-health-sync iOS app, stores it locally in SQLite, and provides agent tools for health data analysis.",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "API key for authenticating ingest requests from the iOS app. If omitted, one is auto-generated on first run."
+      },
+      "storagePath": {
+        "type": "string",
+        "description": "Path to the SQLite database file.",
+        "default": "~/.openclaw/state/health-sync/health.sqlite"
+      },
+      "summaryCacheTtlMinutes": {
+        "type": "number",
+        "description": "How long to cache daily summaries before regenerating. 0 = always regenerate.",
+        "default": 60
+      }
+    }
+  }
+}
