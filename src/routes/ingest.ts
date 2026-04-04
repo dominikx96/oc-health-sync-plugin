@@ -9,6 +9,31 @@ import {
   invalidateSummariesForDates,
 } from '../db/queries.js';
 import type { IngestSample } from '../db/queries.js';
+import { DATA_TYPE_MAP } from '../types/data-type-schema.js';
+
+// Build reverse lookup: short name → full HK identifier + kind
+const SHORT_TO_HK: Record<string, { identifier: string; kind: string }> = {};
+for (const [shortName, def] of Object.entries(DATA_TYPE_MAP)) {
+  SHORT_TO_HK[shortName] = def;
+}
+
+function normalizeDataType(dataType: string): string {
+  return SHORT_TO_HK[dataType]?.identifier ?? dataType;
+}
+
+function deriveSampleKind(
+  rawType: string | undefined,
+  normalizedType: string,
+): 'quantity' | 'category' | 'workout' {
+  // Check if the raw short name has a known kind in DATA_TYPE_MAP
+  if (rawType && SHORT_TO_HK[rawType]) {
+    return SHORT_TO_HK[rawType].kind as 'quantity' | 'category' | 'workout';
+  }
+  // Fall back to inferring from the full HK identifier
+  if (normalizedType.includes('HKCategoryType')) return 'category';
+  if (normalizedType.includes('HKWorkoutType') || normalizedType === 'HKWorkoutTypeIdentifier') return 'workout';
+  return 'quantity';
+}
 
 interface IngestRequestBody {
   device_id: string;
@@ -81,7 +106,15 @@ export function registerIngestRoute(
         return true;
       }
 
-      const newSamples = body.new_samples;
+      const newSamples = body.new_samples.map((s) => {
+        const rawType = s.data_type ?? body.data_type ?? 'unknown';
+        const dataType = normalizeDataType(rawType);
+        return {
+          ...s,
+          data_type: dataType,
+          sample_kind: s.sample_kind ?? deriveSampleKind(rawType, dataType),
+        };
+      });
       const deletedIds = body.deleted_ids ?? [];
 
       console.log(`[health-sync] 📥 Ingest request from device ${body.device_id}: ${newSamples.length} samples, ${deletedIds.length} deletes`);

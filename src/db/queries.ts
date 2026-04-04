@@ -248,10 +248,11 @@ export function getSleepStages(
       SUM((julianday(end_date) - julianday(start_date)) * 24 * 60) as minutes
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND date(start_date) = ?
+      AND datetime(start_date) >= datetime(?, '+18 hours')
+      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
       AND deleted_at IS NULL
     GROUP BY value
-  `).all(date) as SleepStageRow[];
+  `).all(date, date) as SleepStageRow[];
 }
 
 export function getSleepWindow(
@@ -264,10 +265,11 @@ export function getSleepWindow(
       MAX(end_date) as sleep_end
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND date(start_date) = ?
-      AND value != 2
+      AND datetime(start_date) >= datetime(?, '+18 hours')
+      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
+      AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date) as { sleep_start: string | null; sleep_end: string | null } | undefined;
+  `).get(date, date) as { sleep_start: string | null; sleep_end: string | null } | undefined;
   return row ?? { sleep_start: null, sleep_end: null };
 }
 
@@ -487,10 +489,11 @@ export function getSleepDurationForDate(
     ), 0) as minutes
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND date(start_date) = ?
+      AND datetime(start_date) >= datetime(?, '+18 hours')
+      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
       AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date) as { minutes: number };
+  `).get(date, date) as { minutes: number };
   return row.minutes;
 }
 
