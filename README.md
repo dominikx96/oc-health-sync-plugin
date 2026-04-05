@@ -21,10 +21,10 @@ If the server is a **remote VPS**, you also need a private tunnel from your iPho
 
 ## Install
 
-> ⚠️ Until the first npm release ships, install from source (see [Install from source](#install-from-source)). Once published, the commands below will work.
+> The plugin is currently pre-1.0 and published under the `next` dist-tag. Use `@next` explicitly until a stable `latest` is promoted.
 
 ```bash
-openclaw plugins install @oc-health-sync/openclaw-plugin
+openclaw plugins install @oc-health-sync/openclaw-plugin@next
 openclaw gateway restart
 ```
 
