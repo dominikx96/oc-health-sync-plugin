@@ -1,6 +1,6 @@
 {
   "name": "@oc-health-sync/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1-next.0",
   "description": "Receives Apple HealthKit data from the oc-health-sync iOS app, stores it locally in SQLite, and provides agent tools for health data analysis.",
   "type": "module",
   "main": "dist/index.js",
@@ -27,9 +27,16 @@
     "node": ">=22"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
-  "files": ["dist", "openclaw.plugin.json", "skills", "README.md"],
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "skills",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
