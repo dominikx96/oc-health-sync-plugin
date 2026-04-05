@@ -1,23 +1,50 @@
 {
   "name": "@oc-health-sync/openclaw-plugin",
   "version": "0.1.0",
+  "description": "Receives Apple HealthKit data from the oc-health-sync iOS app, stores it locally in SQLite, and provides agent tools for health data analysis.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "license": "MIT",
+  "author": "Dominik Barcikowski",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dominikx96/oc-health-sync-plugin.git"
+  },
+  "homepage": "https://github.com/dominikx96/oc-health-sync-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/dominikx96/oc-health-sync-plugin/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "healthkit",
+    "apple-health",
+    "health",
+    "sqlite"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "openclaw": {
     "extensions": ["./dist/index.js"]
   },
   "files": ["dist", "openclaw.plugin.json", "skills", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
     "better-sqlite3": "^11.0.0"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.2.0"
+    "openclaw": ">=2026.2.0 <2027.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
