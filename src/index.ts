@@ -30,7 +30,7 @@ export default definePluginEntry({
     process.on("exit", () => db.close());
 
     // 6. Log setup info
-    console.log(`[health-syc] SQLite database ready at ${storagePath}`);
+    console.log(`[health-sync] SQLite database ready at ${storagePath}`);
     console.log(`[health-sync] API Key: ${config.apiKey}`);
     console.log("[health-sync] Ingest endpoint: POST /api/v1/health/ingest");
     console.log("[health-sync] Ready! (hot reload test)");

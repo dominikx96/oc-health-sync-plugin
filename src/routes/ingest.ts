@@ -122,17 +122,9 @@ export function registerIngestRoute(
       try {
         const affectedDates = extractAffectedDates(newSamples, deletedIds, db);
 
-        db.exec('BEGIN');
-        let result: { received: number; deleted: number };
-        try {
-          const received = upsertSamples(db, body.device_id, newSamples);
-          const deleted = softDeleteSamples(db, deletedIds);
-          result = { received, deleted };
-          db.exec('COMMIT');
-        } catch (e) {
-          db.exec('ROLLBACK');
-          throw e;
-        }
+        const received = upsertSamples(db, body.device_id, newSamples);
+        const deleted = softDeleteSamples(db, deletedIds);
+        const result = { received, deleted };
 
         invalidateSummariesForDates(db, affectedDates);
 
