@@ -1,11 +1,11 @@
 import { Type } from '@sinclair/typebox';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { generateSummary } from '../summary/generator.js';
 
 export function registerSummaryTool(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
   cacheTtlMinutes: number,
 ): void {
   api.registerTool({

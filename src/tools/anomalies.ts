@@ -1,5 +1,5 @@
 import { Type } from '@sinclair/typebox';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import {
   getDailyMetricValues,
@@ -33,7 +33,7 @@ interface Anomaly {
 }
 
 function detectTrend(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   label: string,
   unit: string,
@@ -91,7 +91,7 @@ function detectTrend(
 }
 
 function detectDeviation(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   label: string,
   unit: string,
@@ -123,7 +123,7 @@ function detectDeviation(
 }
 
 function detectSleepDeficit(
-  db: Database.Database,
+  db: DatabaseSync,
   thresholdMinutes: number,
 ): Anomaly[] {
   const dates = dateRange(formatDate(7), formatDate(1));
@@ -152,7 +152,7 @@ function detectSleepDeficit(
   return [];
 }
 
-function detectMissingData(db: Database.Database): Anomaly[] {
+function detectMissingData(db: DatabaseSync): Anomaly[] {
   const anomalies: Anomaly[] = [];
   const expectedTypes = [
     { type: 'HKQuantityTypeIdentifierHeartRate', label: 'Heart rate' },
@@ -181,7 +181,7 @@ function detectMissingData(db: Database.Database): Anomaly[] {
   return anomalies;
 }
 
-function detectWorkoutSpike(db: Database.Database): Anomaly[] {
+function detectWorkoutSpike(db: DatabaseSync): Anomaly[] {
   const thisWeekFrom = formatDate(7);
   const thisWeekTo = formatDate(0);
   const thisWeekTotal = getWorkoutTotalForRange(db, thisWeekFrom, thisWeekTo);
@@ -218,7 +218,7 @@ function detectWorkoutSpike(db: Database.Database): Anomaly[] {
 
 export function registerAnomaliesTool(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
 ): void {
   api.registerTool({
     name: 'health_anomalies',

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import {
   getStepsForDate,
   getActiveEnergyForDate,
@@ -40,7 +40,7 @@ function sevenDaysBefore(date: string): string {
 }
 
 function detectDailyAnomalies(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
   restingHr: number | null,
   restingHr7dAvg: number | null,
@@ -83,7 +83,7 @@ function detectDailyAnomalies(
 }
 
 function generateDaySummary(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
   cacheTtlMinutes: number,
 ): string {
@@ -193,7 +193,7 @@ function generateDaySummary(
 }
 
 export function generateSummary(
-  db: Database.Database,
+  db: DatabaseSync,
   from: string,
   to: string,
   cacheTtlMinutes: number,

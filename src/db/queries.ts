@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 
 export interface HealthSampleRow {
   uuid: string;
@@ -70,15 +70,16 @@ ON CONFLICT(uuid) DO UPDATE SET
 `;
 
 export function upsertSamples(
-  db: Database.Database,
+  db: DatabaseSync,
   deviceId: string,
   samples: IngestSample[],
 ): number {
   const stmt = db.prepare(UPSERT_SQL);
+  let count = 0;
 
-  const runAll = db.transaction((items: IngestSample[]) => {
-    let count = 0;
-    for (const s of items) {
+  db.exec('BEGIN');
+  try {
+    for (const s of samples) {
       const metadataJson = JSON.stringify({
         ...(s.metadata ?? {}),
         ...(s.events ? { events: s.events } : {}),
@@ -106,14 +107,17 @@ export function upsertSamples(
       );
       count++;
     }
-    return count;
-  });
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 
-  return runAll(samples);
+  return count;
 }
 
 export function softDeleteSamples(
-  db: Database.Database,
+  db: DatabaseSync,
   uuids: string[],
 ): number {
   if (uuids.length === 0) return 0;
@@ -125,25 +129,25 @@ export function softDeleteSamples(
     WHERE uuid IN (${placeholders}) AND deleted_at IS NULL
   `);
 
-  return stmt.run(...uuids).changes;
+  return Number(stmt.run(...uuids).changes);
 }
 
-export function getSampleCount(db: Database.Database): number {
+export function getSampleCount(db: DatabaseSync): number {
   const row = db.prepare(
     'SELECT COUNT(*) as count FROM health_samples WHERE deleted_at IS NULL',
-  ).get() as { count: number } | undefined;
+  ).get() as unknown as { count: number } | undefined;
   return row?.count ?? 0;
 }
 
-export function getLastIngestTime(db: Database.Database): string | null {
+export function getLastIngestTime(db: DatabaseSync): string | null {
   const row = db.prepare(
     "SELECT value FROM sync_metadata WHERE key = 'last_ingest_at'",
-  ).get() as { value: string } | undefined;
+  ).get() as unknown as { value: string } | undefined;
   return row?.value ?? null;
 }
 
 export function setSyncMetadata(
-  db: Database.Database,
+  db: DatabaseSync,
   key: string,
   value: string,
 ): void {
@@ -155,17 +159,17 @@ export function setSyncMetadata(
 }
 
 export function getSyncMetadata(
-  db: Database.Database,
+  db: DatabaseSync,
   key: string,
 ): string | null {
   const row = db.prepare(
     'SELECT value FROM sync_metadata WHERE key = ?',
-  ).get(key) as { value: string } | undefined;
+  ).get(key) as unknown as { value: string } | undefined;
   return row?.value ?? null;
 }
 
 export function getSamplesInRange(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   from: string,
   to: string,
@@ -179,11 +183,11 @@ export function getSamplesInRange(
       AND deleted_at IS NULL
     ORDER BY start_date
     LIMIT ?
-  `).all(dataType, from, to, limit) as HealthSampleRow[];
+  `).all(dataType, from, to, limit) as unknown as HealthSampleRow[];
 }
 
 export function getAggregation(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   from: string,
   to: string,
@@ -197,7 +201,7 @@ export function getAggregation(
         AND date(start_date) <= ?
         AND deleted_at IS NULL
       ORDER BY start_date DESC LIMIT 1
-    `).get(dataType, from, to) as { value: number | null; count: number } | undefined;
+    `).get(dataType, from, to) as unknown as { value: number | null; count: number } | undefined;
     return row ?? { value: null, count: 0 };
   }
 
@@ -209,12 +213,12 @@ export function getAggregation(
       AND date(start_date) >= ?
       AND date(start_date) <= ?
       AND deleted_at IS NULL
-  `).get(dataType, from, to) as { value: number | null; count: number } | undefined;
+  `).get(dataType, from, to) as unknown as { value: number | null; count: number } | undefined;
   return row ?? { value: null, count: 0 };
 }
 
 export function getDailyBreakdown(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   from: string,
   to: string,
@@ -230,7 +234,7 @@ export function getDailyBreakdown(
       AND deleted_at IS NULL
     GROUP BY date(start_date)
     ORDER BY date(start_date)
-  `).all(dataType, from, to) as Array<{ date: string; value: number | null }>;
+  `).all(dataType, from, to) as unknown as Array<{ date: string; value: number | null }>;
 }
 
 export interface SleepStageRow {
@@ -239,7 +243,7 @@ export interface SleepStageRow {
 }
 
 export function getSleepStages(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): SleepStageRow[] {
   return db.prepare(`
@@ -252,11 +256,11 @@ export function getSleepStages(
       AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
       AND deleted_at IS NULL
     GROUP BY value
-  `).all(date, date) as SleepStageRow[];
+  `).all(date, date) as unknown as SleepStageRow[];
 }
 
 export function getSleepWindow(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): { sleep_start: string | null; sleep_end: string | null } {
   const row = db.prepare(`
@@ -269,7 +273,7 @@ export function getSleepWindow(
       AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
       AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date, date) as { sleep_start: string | null; sleep_end: string | null } | undefined;
+  `).get(date, date) as unknown as { sleep_start: string | null; sleep_end: string | null } | undefined;
   return row ?? { sleep_start: null, sleep_end: null };
 }
 
@@ -283,7 +287,7 @@ export interface WorkoutRow {
 }
 
 export function getWorkouts(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): WorkoutRow[] {
   return db.prepare(`
@@ -299,11 +303,11 @@ export function getWorkouts(
       AND date(start_date) = ?
       AND deleted_at IS NULL
     ORDER BY start_date
-  `).all(date) as WorkoutRow[];
+  `).all(date) as unknown as WorkoutRow[];
 }
 
 export function getStepsForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): number {
   const row = db.prepare(`
@@ -312,12 +316,12 @@ export function getStepsForDate(
     WHERE data_type = 'HKQuantityTypeIdentifierStepCount'
       AND date(start_date) = ?
       AND deleted_at IS NULL
-  `).get(date) as { total: number };
+  `).get(date) as unknown as { total: number };
   return row.total;
 }
 
 export function getActiveEnergyForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): number {
   const row = db.prepare(`
@@ -326,12 +330,12 @@ export function getActiveEnergyForDate(
     WHERE data_type = 'HKQuantityTypeIdentifierActiveEnergyBurned'
       AND date(start_date) = ?
       AND deleted_at IS NULL
-  `).get(date) as { total: number };
+  `).get(date) as unknown as { total: number };
   return row.total;
 }
 
 export function getDistanceForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): number {
   const row = db.prepare(`
@@ -340,12 +344,12 @@ export function getDistanceForDate(
     WHERE data_type = 'HKQuantityTypeIdentifierDistanceWalkingRunning'
       AND date(start_date) = ?
       AND deleted_at IS NULL
-  `).get(date) as { total: number };
+  `).get(date) as unknown as { total: number };
   return row.total;
 }
 
 export function getHeartRateStats(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): { avg_hr: number | null; min_hr: number | null; max_hr: number | null; count: number } {
   const row = db.prepare(`
@@ -358,12 +362,12 @@ export function getHeartRateStats(
     WHERE data_type = 'HKQuantityTypeIdentifierHeartRate'
       AND date(start_date) = ?
       AND deleted_at IS NULL
-  `).get(date) as { avg_hr: number | null; min_hr: number | null; max_hr: number | null; count: number };
+  `).get(date) as unknown as { avg_hr: number | null; min_hr: number | null; max_hr: number | null; count: number };
   return row;
 }
 
 export function getLatestMetricForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   date: string,
 ): number | null {
@@ -373,12 +377,12 @@ export function getLatestMetricForDate(
       AND date(start_date) = ?
       AND deleted_at IS NULL
     ORDER BY start_date DESC LIMIT 1
-  `).get(dataType, date) as { value: number | null } | undefined;
+  `).get(dataType, date) as unknown as { value: number | null } | undefined;
   return row?.value ?? null;
 }
 
 export function getAvgMetricForRange(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   from: string,
   to: string,
@@ -390,12 +394,12 @@ export function getAvgMetricForRange(
       AND date(start_date) >= ?
       AND date(start_date) <= ?
       AND deleted_at IS NULL
-  `).get(dataType, from, to) as { avg_val: number | null } | undefined;
+  `).get(dataType, from, to) as unknown as { avg_val: number | null } | undefined;
   return row?.avg_val ?? null;
 }
 
 export function getLatestWeightUpTo(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): { value: number; unit: string; date: string } | null {
   const row = db.prepare(`
@@ -405,12 +409,12 @@ export function getLatestWeightUpTo(
       AND date(start_date) <= ?
       AND deleted_at IS NULL
     ORDER BY start_date DESC LIMIT 1
-  `).get(date) as { value: number; unit: string; date: string } | undefined;
+  `).get(date) as unknown as { value: number; unit: string; date: string } | undefined;
   return row ?? null;
 }
 
 export function getDataHash(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): string {
   const row = db.prepare(`
@@ -418,24 +422,24 @@ export function getDataHash(
     FROM health_samples
     WHERE date(start_date) = ?
       AND deleted_at IS NULL
-  `).get(date) as { hash: string };
+  `).get(date) as unknown as { hash: string };
   return row.hash;
 }
 
 export function getCachedSummary(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): { markdown: string; data_hash: string; generated_at: string } | null {
   const row = db.prepare(`
     SELECT markdown, data_hash, generated_at
     FROM daily_summaries
     WHERE date = ?
-  `).get(date) as { markdown: string; data_hash: string; generated_at: string } | undefined;
+  `).get(date) as unknown as { markdown: string; data_hash: string; generated_at: string } | undefined;
   return row ?? null;
 }
 
 export function setCachedSummary(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
   deviceId: string,
   markdown: string,
@@ -452,7 +456,7 @@ export function setCachedSummary(
 }
 
 export function invalidateSummariesForDates(
-  db: Database.Database,
+  db: DatabaseSync,
   dates: string[],
 ): void {
   if (dates.length === 0) return;
@@ -463,7 +467,7 @@ export function invalidateSummariesForDates(
 }
 
 export function getDailyMetricValues(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
   from: string,
   to: string,
@@ -476,11 +480,11 @@ export function getDailyMetricValues(
       AND date(start_date) <= ?
       AND deleted_at IS NULL
     ORDER BY start_date
-  `).all(dataType, from, to) as Array<{ date: string; value: number }>;
+  `).all(dataType, from, to) as unknown as Array<{ date: string; value: number }>;
 }
 
 export function getSleepDurationForDate(
-  db: Database.Database,
+  db: DatabaseSync,
   date: string,
 ): number {
   const row = db.prepare(`
@@ -493,12 +497,12 @@ export function getSleepDurationForDate(
       AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
       AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date, date) as { minutes: number };
+  `).get(date, date) as unknown as { minutes: number };
   return row.minutes;
 }
 
 export function getLastSampleDate(
-  db: Database.Database,
+  db: DatabaseSync,
   dataType: string,
 ): string | null {
   const row = db.prepare(`
@@ -507,12 +511,12 @@ export function getLastSampleDate(
     WHERE data_type = ?
       AND deleted_at IS NULL
     ORDER BY start_date DESC LIMIT 1
-  `).get(dataType) as { last_date: string } | undefined;
+  `).get(dataType) as unknown as { last_date: string } | undefined;
   return row?.last_date ?? null;
 }
 
 export function getWorkoutTotalForRange(
-  db: Database.Database,
+  db: DatabaseSync,
   from: string,
   to: string,
 ): number {
@@ -523,6 +527,6 @@ export function getWorkoutTotalForRange(
       AND date(start_date) >= ?
       AND date(start_date) <= ?
       AND deleted_at IS NULL
-  `).get(from, to) as { total: number };
+  `).get(from, to) as unknown as { total: number };
   return row.total;
 }

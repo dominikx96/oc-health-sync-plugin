@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import type { PluginConfig } from '../utils/config.js';
 import { registerSummaryTool } from './summary.js';
@@ -8,7 +8,7 @@ import { registerRawTool } from './raw.js';
 
 export function registerHealthTools(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
   config: PluginConfig,
 ): void {
   registerSummaryTool(api, db, config.summaryCacheTtlMinutes);

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { validateApiKey, sendUnauthorized } from '../utils/auth.js';
 import { sendJson } from '../utils/http.js';
@@ -6,7 +6,7 @@ import { getSampleCount, getLastIngestTime } from '../db/queries.js';
 
 export function registerHealthcheckRoute(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
   apiKey: string,
 ): void {
   api.registerHttpRoute({

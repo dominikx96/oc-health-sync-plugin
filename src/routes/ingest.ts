@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { validateApiKey, sendUnauthorized } from '../utils/auth.js';
 import { parseJsonBody, sendJson } from '../utils/http.js';
@@ -45,7 +45,7 @@ interface IngestRequestBody {
 function extractAffectedDates(
   samples: IngestSample[],
   deletedIds: string[],
-  db: Database.Database,
+  db: DatabaseSync,
 ): string[] {
   const dates = new Set<string>();
 
@@ -63,7 +63,7 @@ function extractAffectedDates(
       .prepare(
         `SELECT DISTINCT date(start_date) as d FROM health_samples WHERE uuid IN (${placeholders})`,
       )
-      .all(...deletedIds) as Array<{ d: string }>;
+      .all(...deletedIds) as unknown as Array<{ d: string }>;
     for (const row of rows) {
       dates.add(row.d);
     }
@@ -74,7 +74,7 @@ function extractAffectedDates(
 
 export function registerIngestRoute(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
   apiKey: string,
 ): void {
   api.registerHttpRoute({
@@ -122,13 +122,17 @@ export function registerIngestRoute(
       try {
         const affectedDates = extractAffectedDates(newSamples, deletedIds, db);
 
-        const runIngest = db.transaction(() => {
+        db.exec('BEGIN');
+        let result: { received: number; deleted: number };
+        try {
           const received = upsertSamples(db, body.device_id, newSamples);
           const deleted = softDeleteSamples(db, deletedIds);
-          return { received, deleted };
-        });
-
-        const result = runIngest();
+          result = { received, deleted };
+          db.exec('COMMIT');
+        } catch (e) {
+          db.exec('ROLLBACK');
+          throw e;
+        }
 
         invalidateSummariesForDates(db, affectedDates);
 

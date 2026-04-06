@@ -2,6 +2,8 @@
 
 Receives Apple HealthKit data from the [oc-health-sync iOS app](../), stores it in a local SQLite database, and exposes agent tools for querying and summarizing health data. **All data stays on the machine running OpenClaw** — nothing leaves your network.
 
+Uses Node's built-in `node:sqlite` module — **no native bindings**, no build toolchain needed, no post-install steps.
+
 ---
 
 ## Before you install
@@ -11,8 +13,7 @@ You need all of the following on the **server** that will run the plugin (this c
 | Requirement | Why | How to get it |
 |---|---|---|
 | **OpenClaw** ≥ `2026.2.0` with the gateway running | The plugin is hosted inside OpenClaw's gateway process. | `npm install -g openclaw@latest` then `openclaw gateway start` |
-| **Node.js 22+** | OpenClaw's runtime. | [nodejs.org](https://nodejs.org) or `nvm install 22` |
-| **C/C++ build toolchain** | `better-sqlite3` compiles a native binding on install. | **Debian/Ubuntu:** `sudo apt install build-essential python3` · **macOS:** `xcode-select --install` · **Alpine:** `apk add build-base python3` |
+| **Node.js 24+** | Required for the stable built-in `node:sqlite` module. | [nodejs.org](https://nodejs.org) or `nvm install 24` |
 | **The oc-health-sync iOS app** | The plugin is the receiver — it needs data from the iOS app. | [Repo / TestFlight link](../) |
 
 If the server is a **remote VPS**, you also need a private tunnel from your iPhone to the gateway (it only binds to `localhost`). See [Connecting from a remote server](#connecting-from-a-remote-server) below — Tailscale is the recommended route.
@@ -23,18 +24,20 @@ If the server is a **remote VPS**, you also need a private tunnel from your iPho
 
 > The plugin is currently pre-1.0 and published under the `next` dist-tag. Use `@next` explicitly until a stable `latest` is promoted.
 
+### 1. Install the package
+
 ```bash
 openclaw plugins install @oc-health-sync/openclaw-plugin@next
-openclaw gateway restart
 ```
 
-Grab the auto-generated API key from the gateway logs:
+### 2. Restart the gateway + grab the API key
 
 ```bash
+openclaw gateway restart
 openclaw gateway logs 2>&1 | grep "health-sync"
 ```
 
-Then point the **iOS app** at your server:
+### 3. Connect the iOS app
 
 - **Server URL:** `http://127.0.0.1:18789` (local) or `http://<tailscale-ip>:18789` (remote)
 - **API key:** paste the key from the logs
@@ -66,6 +69,7 @@ openclaw gateway restart
   - `health_raw` — raw sample access
 - **Auto-generated API key** — zero-config install, key generated on first run
 - **Summary caching** — repeat queries are fast, cache invalidates when new data arrives
+- **Zero native dependencies** — uses Node's built-in `node:sqlite`, works with OpenClaw's `--ignore-scripts` install
 
 ---
 
@@ -174,9 +178,6 @@ plugins:
 **No API key shows in the logs**
 The key is printed once on first load. Restart the gateway: `openclaw gateway restart && openclaw gateway logs 2>&1 | grep "health-sync"`. Or set `apiKey` explicitly in `config.yaml` (see above).
 
-**`better-sqlite3` install fails**
-You're missing the C/C++ build toolchain. Install it (see the [Before you install](#before-you-install) table), delete `node_modules`, and rerun `npm install`.
-
 **iOS app says "Test Connection failed"**
 1. From the server, confirm the gateway is reachable: `curl -s http://127.0.0.1:18789/api/v1/health -H "Authorization: Bearer $API_KEY"` should return 200.
 2. If the server is remote: `tailscale serve status` must show port 18789 exposed, and the iPhone must be signed into the **same** tailnet.
@@ -190,9 +191,18 @@ sqlite3 ~/.openclaw/state/health-sync/health.sqlite \
 ```
 If empty, check the ingest logs for schema/validation errors.
 
+**Plugin fails to load with "Cannot find module 'node:sqlite'"**
+You need Node 24+. Check your version: `node --version`. Update via `nvm install 24` or [nodejs.org](https://nodejs.org).
+
 ---
 
 ## Development
+
+### Prerequisites
+
+- Node.js 24+
+- OpenClaw installed (`npm install -g openclaw@latest`)
+- OpenClaw gateway running (`openclaw gateway start`)
 
 ### First-time setup
 
@@ -273,7 +283,7 @@ See [RELEASING.md](./RELEASING.md) for the full publish flow (pre-publish checks
 src/
 ├── index.ts                    # Plugin entry point
 ├── db/
-│   ├── connection.ts           # SQLite connection + WAL mode
+│   ├── connection.ts           # SQLite connection (node:sqlite) + WAL mode
 │   ├── schema.ts               # 3 tables + indexes
 │   └── queries.ts              # Typed query helpers
 ├── routes/
@@ -303,7 +313,7 @@ iOS App                          OpenClaw Plugin
 POST /api/v1/health/ingest  ──────────► HTTP Route Handler
                                       │
                                       ▼
-                                 SQLite DB (raw samples)
+                                 SQLite DB (node:sqlite, WAL mode)
                                       │
 Agent asks                            ▼
 "How was my sleep?"              Summary Generator
@@ -320,5 +330,6 @@ compact, accurate answer
 
 - API key validated on every request (timing-safe comparison)
 - No outbound network requests — data stays local
+- No native dependencies — pure JS/TS plugin, safe with OpenClaw's `--ignore-scripts`
 - SQLite WAL mode for concurrent reads during writes
 - Soft-delete semantics — no data permanently lost

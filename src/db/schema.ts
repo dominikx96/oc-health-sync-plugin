@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { createDatabase } from './connection.js';
 
 const SCHEMA_SQL = `
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS sync_metadata (
 );
 `;
 
-export function initDatabase(dbPath: string): Database.Database {
+export function initDatabase(dbPath: string): DatabaseSync {
   const db = createDatabase(dbPath);
   db.exec(SCHEMA_SQL);
   return db;

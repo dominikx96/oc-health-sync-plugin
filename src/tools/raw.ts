@@ -1,12 +1,12 @@
 import { Type } from '@sinclair/typebox';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { getSamplesInRange } from '../db/queries.js';
 import { METRIC_MAP } from '../utils/constants.js';
 
 export function registerRawTool(
   api: PluginApi,
-  db: Database.Database,
+  db: DatabaseSync,
 ): void {
   api.registerTool({
     name: 'health_raw',

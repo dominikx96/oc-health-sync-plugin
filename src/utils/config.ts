@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { getSyncMetadata, setSyncMetadata } from '../db/queries.js';
 
@@ -18,7 +18,7 @@ function resolveStoragePath(api: PluginApi): string {
   return process.env['HEALTH_SYNC_DB_PATH'] ?? DEFAULT_STORAGE_PATH;
 }
 
-function resolveApiKey(api: PluginApi, db: Database.Database): string {
+function resolveApiKey(api: PluginApi, db: DatabaseSync): string {
   // 1. Check plugin config
   const fromConfig = api.config?.apiKey as string | undefined;
   if (fromConfig) return fromConfig;
@@ -52,7 +52,7 @@ export function getStoragePath(api: PluginApi): string {
   return resolveStoragePath(api);
 }
 
-export function getConfig(api: PluginApi, db: Database.Database): PluginConfig {
+export function getConfig(api: PluginApi, db: DatabaseSync): PluginConfig {
   return {
     apiKey: resolveApiKey(api, db),
     storagePath: resolveStoragePath(api),
