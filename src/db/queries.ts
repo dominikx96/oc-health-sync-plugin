@@ -48,9 +48,9 @@ INSERT INTO health_samples (
   source_name, source_bundle, device_name, device_model,
   workout_duration_seconds, workout_total_energy_kcal,
   workout_total_distance_m, workout_activity_name,
-  metadata_json, updated_at, deleted_at
+  local_date, metadata_json, updated_at, deleted_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), NULL)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), NULL)
 ON CONFLICT(uuid) DO UPDATE SET
   value = excluded.value,
   unit = excluded.unit,
@@ -64,6 +64,7 @@ ON CONFLICT(uuid) DO UPDATE SET
   workout_total_energy_kcal = excluded.workout_total_energy_kcal,
   workout_total_distance_m = excluded.workout_total_distance_m,
   workout_activity_name = excluded.workout_activity_name,
+  local_date = excluded.local_date,
   metadata_json = excluded.metadata_json,
   updated_at = datetime('now'),
   deleted_at = NULL;
@@ -72,7 +73,7 @@ ON CONFLICT(uuid) DO UPDATE SET
 export function upsertSamples(
   db: DatabaseSync,
   deviceId: string,
-  samples: IngestSample[],
+  samples: Array<IngestSample & { local_date: string }>,
 ): number {
   const stmt = db.prepare(UPSERT_SQL);
   let count = 0;
@@ -103,6 +104,7 @@ export function upsertSamples(
         s.workout_energy ?? null,
         s.workout_distance ?? null,
         s.workout_activity_name ?? null,
+        s.local_date,
         metadataJson,
       );
       count++;
@@ -178,8 +180,8 @@ export function getSamplesInRange(
   return db.prepare(`
     SELECT * FROM health_samples
     WHERE data_type = ?
-      AND start_date >= ?
-      AND start_date < datetime(?, '+1 day')
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
     ORDER BY start_date
     LIMIT ?
@@ -197,8 +199,8 @@ export function getAggregation(
     const row = db.prepare(`
       SELECT value, 1 as count FROM health_samples
       WHERE data_type = ?
-        AND date(start_date) >= ?
-        AND date(start_date) <= ?
+        AND local_date >= ?
+        AND local_date <= ?
         AND deleted_at IS NULL
       ORDER BY start_date DESC LIMIT 1
     `).get(dataType, from, to) as unknown as { value: number | null; count: number } | undefined;
@@ -210,8 +212,8 @@ export function getAggregation(
     SELECT ${aggFn}(value) as value, COUNT(*) as count
     FROM health_samples
     WHERE data_type = ?
-      AND date(start_date) >= ?
-      AND date(start_date) <= ?
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
   `).get(dataType, from, to) as unknown as { value: number | null; count: number } | undefined;
   return row ?? { value: null, count: 0 };
@@ -226,14 +228,14 @@ export function getDailyBreakdown(
 ): Array<{ date: string; value: number | null }> {
   const aggFn = agg.toUpperCase();
   return db.prepare(`
-    SELECT date(start_date) as date, ${aggFn}(value) as value
+    SELECT local_date as date, ${aggFn}(value) as value
     FROM health_samples
     WHERE data_type = ?
-      AND date(start_date) >= ?
-      AND date(start_date) <= ?
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
-    GROUP BY date(start_date)
-    ORDER BY date(start_date)
+    GROUP BY local_date
+    ORDER BY local_date
   `).all(dataType, from, to) as unknown as Array<{ date: string; value: number | null }>;
 }
 
@@ -245,6 +247,8 @@ export interface SleepStageRow {
 export function getSleepStages(
   db: DatabaseSync,
   date: string,
+  sleepStartUtc: string,
+  sleepEndUtc: string,
 ): SleepStageRow[] {
   return db.prepare(`
     SELECT
@@ -252,16 +256,18 @@ export function getSleepStages(
       SUM((julianday(end_date) - julianday(start_date)) * 24 * 60) as minutes
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND datetime(start_date) >= datetime(?, '+18 hours')
-      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
+      AND datetime(start_date) >= datetime(?)
+      AND datetime(start_date) < datetime(?)
       AND deleted_at IS NULL
     GROUP BY value
-  `).all(date, date) as unknown as SleepStageRow[];
+  `).all(sleepStartUtc, sleepEndUtc) as unknown as SleepStageRow[];
 }
 
 export function getSleepWindow(
   db: DatabaseSync,
   date: string,
+  sleepStartUtc: string,
+  sleepEndUtc: string,
 ): { sleep_start: string | null; sleep_end: string | null } {
   const row = db.prepare(`
     SELECT
@@ -269,11 +275,11 @@ export function getSleepWindow(
       MAX(end_date) as sleep_end
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND datetime(start_date) >= datetime(?, '+18 hours')
-      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
+      AND datetime(start_date) >= datetime(?)
+      AND datetime(start_date) < datetime(?)
       AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date, date) as unknown as { sleep_start: string | null; sleep_end: string | null } | undefined;
+  `).get(sleepStartUtc, sleepEndUtc) as unknown as { sleep_start: string | null; sleep_end: string | null } | undefined;
   return row ?? { sleep_start: null, sleep_end: null };
 }
 
@@ -300,7 +306,7 @@ export function getWorkouts(
       end_date
     FROM health_samples
     WHERE sample_kind = 'workout'
-      AND date(start_date) = ?
+      AND local_date = ?
       AND deleted_at IS NULL
     ORDER BY start_date
   `).all(date) as unknown as WorkoutRow[];
@@ -314,7 +320,7 @@ export function getStepsForDate(
     SELECT COALESCE(SUM(value), 0) as total
     FROM health_samples
     WHERE data_type = 'HKQuantityTypeIdentifierStepCount'
-      AND date(start_date) = ?
+      AND local_date = ?
       AND deleted_at IS NULL
   `).get(date) as unknown as { total: number };
   return row.total;
@@ -328,7 +334,7 @@ export function getActiveEnergyForDate(
     SELECT COALESCE(SUM(value), 0) as total
     FROM health_samples
     WHERE data_type = 'HKQuantityTypeIdentifierActiveEnergyBurned'
-      AND date(start_date) = ?
+      AND local_date = ?
       AND deleted_at IS NULL
   `).get(date) as unknown as { total: number };
   return row.total;
@@ -342,7 +348,7 @@ export function getDistanceForDate(
     SELECT COALESCE(SUM(value), 0) as total
     FROM health_samples
     WHERE data_type = 'HKQuantityTypeIdentifierDistanceWalkingRunning'
-      AND date(start_date) = ?
+      AND local_date = ?
       AND deleted_at IS NULL
   `).get(date) as unknown as { total: number };
   return row.total;
@@ -356,7 +362,7 @@ export function getLatestMetricForDate(
   const row = db.prepare(`
     SELECT value FROM health_samples
     WHERE data_type = ?
-      AND date(start_date) = ?
+      AND local_date = ?
       AND deleted_at IS NULL
     ORDER BY start_date DESC LIMIT 1
   `).get(dataType, date) as unknown as { value: number | null } | undefined;
@@ -373,8 +379,8 @@ export function getAvgMetricForRange(
     SELECT ROUND(AVG(value), 1) as avg_val
     FROM health_samples
     WHERE data_type = ?
-      AND date(start_date) >= ?
-      AND date(start_date) <= ?
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
   `).get(dataType, from, to) as unknown as { avg_val: number | null } | undefined;
   return row?.avg_val ?? null;
@@ -385,10 +391,10 @@ export function getLatestWeightUpTo(
   date: string,
 ): { value: number; unit: string; date: string } | null {
   const row = db.prepare(`
-    SELECT value, unit, date(start_date) as date
+    SELECT value, unit, local_date as date
     FROM health_samples
     WHERE data_type = 'HKQuantityTypeIdentifierBodyMass'
-      AND date(start_date) <= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
     ORDER BY start_date DESC LIMIT 1
   `).get(date) as unknown as { value: number; unit: string; date: string } | undefined;
@@ -402,7 +408,7 @@ export function getDataHash(
   const row = db.prepare(`
     SELECT COUNT(*) || '-' || COALESCE(MAX(updated_at), '') as hash
     FROM health_samples
-    WHERE date(start_date) = ?
+    WHERE local_date = ?
       AND deleted_at IS NULL
   `).get(date) as unknown as { hash: string };
   return row.hash;
@@ -455,11 +461,11 @@ export function getDailyMetricValues(
   to: string,
 ): Array<{ date: string; value: number }> {
   return db.prepare(`
-    SELECT date(start_date) as date, value
+    SELECT local_date as date, value
     FROM health_samples
     WHERE data_type = ?
-      AND date(start_date) >= ?
-      AND date(start_date) <= ?
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
     ORDER BY start_date
   `).all(dataType, from, to) as unknown as Array<{ date: string; value: number }>;
@@ -468,6 +474,8 @@ export function getDailyMetricValues(
 export function getSleepDurationForDate(
   db: DatabaseSync,
   date: string,
+  sleepStartUtc: string,
+  sleepEndUtc: string,
 ): number {
   const row = db.prepare(`
     SELECT COALESCE(SUM(
@@ -475,11 +483,11 @@ export function getSleepDurationForDate(
     ), 0) as minutes
     FROM health_samples
     WHERE data_type = 'HKCategoryTypeIdentifierSleepAnalysis'
-      AND datetime(start_date) >= datetime(?, '+18 hours')
-      AND datetime(start_date) < datetime(?, '+1 day', '+18 hours')
+      AND datetime(start_date) >= datetime(?)
+      AND datetime(start_date) < datetime(?)
       AND value NOT IN (0, 2)
       AND deleted_at IS NULL
-  `).get(date, date) as unknown as { minutes: number };
+  `).get(sleepStartUtc, sleepEndUtc) as unknown as { minutes: number };
   return row.minutes;
 }
 
@@ -488,7 +496,7 @@ export function getLastSampleDate(
   dataType: string,
 ): string | null {
   const row = db.prepare(`
-    SELECT date(start_date) as last_date
+    SELECT local_date as last_date
     FROM health_samples
     WHERE data_type = ?
       AND deleted_at IS NULL
@@ -506,8 +514,8 @@ export function getWorkoutTotalForRange(
     SELECT COALESCE(SUM(workout_duration_seconds), 0) as total
     FROM health_samples
     WHERE sample_kind = 'workout'
-      AND date(start_date) >= ?
-      AND date(start_date) <= ?
+      AND local_date >= ?
+      AND local_date <= ?
       AND deleted_at IS NULL
   `).get(from, to) as unknown as { total: number };
   return row.total;

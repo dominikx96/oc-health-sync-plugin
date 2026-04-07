@@ -12,6 +12,6 @@
 
 ## Longer Term
 
-- [ ] Timezone-aware date handling
-- [ ] Data completeness reporting
-- [ ] More anomaly detectors (weight trends, VO2 Max plateau detection)
+- [x] Timezone-aware date handling
+- [x] Data completeness reporting
+- [x] More anomaly detectors (weight trends, VO2 Max plateau detection)

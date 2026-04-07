@@ -7,6 +7,7 @@ import { executeHealthQuery } from '../tools/query.js';
 import { executeAnomalyDetection } from '../tools/anomalies.js';
 import { executeRawQuery } from '../tools/raw.js';
 import { executeComparison } from '../tools/compare.js';
+import { executeCompletenessReport } from '../tools/completeness.js';
 
 function getQueryParams(url: string | undefined): URLSearchParams {
   if (!url) return new URLSearchParams();
@@ -18,6 +19,7 @@ export function registerQueryRoutes(
   api: PluginApi,
   db: DatabaseSync,
   cacheTtlMinutes: number,
+  timezone?: string,
 ): void {
   // GET /api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
   api.registerHttpRoute({
@@ -37,7 +39,7 @@ export function registerQueryRoutes(
       }
 
       try {
-        const markdown = generateSummary(db, from, to, cacheTtlMinutes, mode);
+        const markdown = generateSummary(db, from, to, cacheTtlMinutes, mode, timezone);
         sendJson(res, 200, { markdown });
       } catch (err) {
         console.error('[health-sync] Summary error:', err);
@@ -65,7 +67,7 @@ export function registerQueryRoutes(
       }
 
       try {
-        const result = executeHealthQuery(db, { metric, from, to, aggregation });
+        const result = executeHealthQuery(db, { metric, from, to, aggregation, timezone });
         sendJson(res, 200, result);
       } catch (err) {
         console.error('[health-sync] Query error:', err);
@@ -86,7 +88,7 @@ export function registerQueryRoutes(
       const sensitivity = params.get('sensitivity') || undefined;
 
       try {
-        const markdown = executeAnomalyDetection(db, { days, sensitivity });
+        const markdown = executeAnomalyDetection(db, { days, sensitivity, timezone });
         sendJson(res, 200, { markdown });
       } catch (err) {
         console.error('[health-sync] Anomalies error:', err);
@@ -158,6 +160,37 @@ export function registerQueryRoutes(
       } catch (err) {
         console.error('[health-sync] Compare error:', err);
         sendJson(res, 500, { error: 'internal_error', message: 'Failed to execute comparison' });
+      }
+      return true;
+    },
+  });
+
+  // GET /api/v1/health/completeness?from=YYYY-MM-DD&to=YYYY-MM-DD&metrics=steps,hrv
+  api.registerHttpRoute({
+    path: '/api/v1/health/completeness',
+    auth: 'plugin',
+    match: 'exact',
+    handler: async (req, res) => {
+      const params = getQueryParams(req.url);
+      const from = params.get('from');
+      const to = params.get('to');
+      const metricsParam = params.get('metrics');
+      const metrics = metricsParam ? metricsParam.split(',') : undefined;
+
+      if (!from || !to) {
+        sendJson(res, 400, {
+          error: 'bad_request',
+          message: 'Missing required params: from, to (YYYY-MM-DD)',
+        });
+        return true;
+      }
+
+      try {
+        const result = executeCompletenessReport(db, { from, to, metrics });
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[health-sync] Completeness error:', err);
+        sendJson(res, 500, { error: 'internal_error', message: 'Failed to generate completeness report' });
       }
       return true;
     },

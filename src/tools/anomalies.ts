@@ -8,23 +8,8 @@ import {
   getWorkoutTotalForRange,
   getAvgMetricForRange,
 } from '../db/queries.js';
-
-function formatDate(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
-}
-
-function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
-  while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
-    current.setDate(current.getDate() + 1);
-  }
-  return dates;
-}
+import { daysAgo, dateRange } from '../utils/dates.js';
+import { localTimeToUtc, nextDay } from '../utils/timezone.js';
 
 interface Anomaly {
   severity: 'warning' | 'info' | 'ok';
@@ -39,10 +24,11 @@ function detectTrend(
   unit: string,
   days: number,
   consecutiveThreshold: number,
+  timezone?: string,
 ): Anomaly[] {
   const anomalies: Anomaly[] = [];
-  const from = formatDate(days);
-  const to = formatDate(0);
+  const from = daysAgo(days, timezone);
+  const to = daysAgo(0, timezone);
   const values = getDailyMetricValues(db, dataType, from, to);
 
   if (values.length < consecutiveThreshold) return anomalies;
@@ -97,11 +83,12 @@ function detectDeviation(
   unit: string,
   days: number,
   threshold: number,
+  timezone?: string,
 ): Anomaly[] {
   const anomalies: Anomaly[] = [];
-  const sevenDaysAgo = formatDate(7);
-  const fourteenDaysAgo = formatDate(days);
-  const today = formatDate(0);
+  const sevenDaysAgo = daysAgo(7, timezone);
+  const fourteenDaysAgo = daysAgo(days, timezone);
+  const today = daysAgo(0, timezone);
 
   const avg7d = getAvgMetricForRange(db, dataType, sevenDaysAgo, today);
   const avg14d = getAvgMetricForRange(db, dataType, fourteenDaysAgo, today);
@@ -125,13 +112,17 @@ function detectDeviation(
 function detectSleepDeficit(
   db: DatabaseSync,
   thresholdMinutes: number,
+  timezone?: string,
 ): Anomaly[] {
-  const dates = dateRange(formatDate(7), formatDate(1));
+  const dates = dateRange(daysAgo(7, timezone), daysAgo(1, timezone));
   let belowCount = 0;
   let totalMinutes = 0;
 
+  const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   for (const d of dates) {
-    const dur = getSleepDurationForDate(db, d);
+    const ssUtc = localTimeToUtc(d, 18, tz);
+    const seUtc = localTimeToUtc(nextDay(d), 18, tz);
+    const dur = getSleepDurationForDate(db, d, ssUtc, seUtc);
     totalMinutes += dur;
     if (dur > 0 && dur < thresholdMinutes) belowCount++;
   }
@@ -152,7 +143,7 @@ function detectSleepDeficit(
   return [];
 }
 
-function detectMissingData(db: DatabaseSync): Anomaly[] {
+function detectMissingData(db: DatabaseSync, timezone?: string): Anomaly[] {
   const anomalies: Anomaly[] = [];
   const expectedTypes = [
     { type: 'HKQuantityTypeIdentifierHeartRate', label: 'Heart rate' },
@@ -163,7 +154,7 @@ function detectMissingData(db: DatabaseSync): Anomaly[] {
     },
   ];
 
-  const twoDaysAgo = formatDate(2);
+  const twoDaysAgo = daysAgo(2, timezone);
 
   for (const { type, label } of expectedTypes) {
     const lastDate = getLastSampleDate(db, type);
@@ -181,16 +172,16 @@ function detectMissingData(db: DatabaseSync): Anomaly[] {
   return anomalies;
 }
 
-function detectWorkoutSpike(db: DatabaseSync): Anomaly[] {
-  const thisWeekFrom = formatDate(7);
-  const thisWeekTo = formatDate(0);
+function detectWorkoutSpike(db: DatabaseSync, timezone?: string): Anomaly[] {
+  const thisWeekFrom = daysAgo(7, timezone);
+  const thisWeekTo = daysAgo(0, timezone);
   const thisWeekTotal = getWorkoutTotalForRange(db, thisWeekFrom, thisWeekTo);
 
   if (thisWeekTotal === 0) return [];
 
   // Compare to 4-week average
-  const fourWeeksFrom = formatDate(28);
-  const fourWeeksTo = formatDate(8);
+  const fourWeeksFrom = daysAgo(28, timezone);
+  const fourWeeksTo = daysAgo(8, timezone);
   const fourWeeksTotal = getWorkoutTotalForRange(
     db,
     fourWeeksFrom,
@@ -216,11 +207,120 @@ function detectWorkoutSpike(db: DatabaseSync): Anomaly[] {
   return [];
 }
 
+function detectWeightTrend(
+  db: DatabaseSync,
+  days: number,
+  consecutiveThreshold: number,
+  timezone?: string,
+): Anomaly[] {
+  const anomalies: Anomaly[] = [];
+  const from = daysAgo(days, timezone);
+  const to = daysAgo(0, timezone);
+  const values = getDailyMetricValues(db, 'HKQuantityTypeIdentifierBodyMass', from, to);
+
+  if (values.length < consecutiveThreshold + 1) return anomalies;
+
+  // Deduplicate to one value per day (latest)
+  const byDay = new Map<string, number>();
+  for (const v of values) byDay.set(v.date, v.value);
+  const daily = Array.from(byDay.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value }));
+
+  if (daily.length < consecutiveThreshold + 1) return anomalies;
+
+  // Check consecutive gain
+  let gainCount = 0;
+  for (let i = daily.length - 1; i > 0; i--) {
+    if (daily[i].value > daily[i - 1].value) gainCount++;
+    else break;
+  }
+
+  if (gainCount >= consecutiveThreshold) {
+    const first = daily[daily.length - gainCount - 1].value;
+    const last = daily[daily.length - 1].value;
+    const delta = (last - first).toFixed(1);
+    anomalies.push({
+      severity: 'warning',
+      title: 'Weight gaining trend',
+      detail: `${gainCount + 1} consecutive readings increasing: ${first} → ${last} kg (+${delta} kg)`,
+    });
+  }
+
+  // Check consecutive loss
+  let lossCount = 0;
+  for (let i = daily.length - 1; i > 0; i--) {
+    if (daily[i].value < daily[i - 1].value) lossCount++;
+    else break;
+  }
+
+  if (lossCount >= consecutiveThreshold) {
+    const first = daily[daily.length - lossCount - 1].value;
+    const last = daily[daily.length - 1].value;
+    const delta = (first - last).toFixed(1);
+    anomalies.push({
+      severity: 'info',
+      title: 'Weight losing trend',
+      detail: `${lossCount + 1} consecutive readings decreasing: ${first} → ${last} kg (-${delta} kg)`,
+    });
+  }
+
+  return anomalies;
+}
+
+function detectVo2MaxPlateau(
+  db: DatabaseSync,
+  days: number,
+  timezone?: string,
+): Anomaly[] {
+  const from = daysAgo(days, timezone);
+  const to = daysAgo(0, timezone);
+  const values = getDailyMetricValues(db, 'HKQuantityTypeIdentifierVO2Max', from, to);
+
+  // Need at least 4 readings to detect a plateau
+  if (values.length < 4) return [];
+
+  // Deduplicate to one per day
+  const byDay = new Map<string, number>();
+  for (const v of values) byDay.set(v.date, v.value);
+  const daily = Array.from(byDay.values());
+
+  if (daily.length < 4) return [];
+
+  // Check if the range of values is very small (plateau = < 0.5 mL/kg·min spread)
+  const min = Math.min(...daily);
+  const max = Math.max(...daily);
+  const spread = max - min;
+
+  if (spread < 0.5) {
+    const avg = (daily.reduce((a, b) => a + b, 0) / daily.length).toFixed(1);
+    return [{
+      severity: 'info',
+      title: 'VO2 Max plateau',
+      detail: `VO2 Max has been flat at ~${avg} mL/kg·min across ${daily.length} readings over the last ${days} days (spread: ${spread.toFixed(1)})`,
+    }];
+  }
+
+  // Also check if the last N readings are all the same (exact plateau)
+  const lastFour = daily.slice(-4);
+  const lastSpread = Math.max(...lastFour) - Math.min(...lastFour);
+  if (lastSpread < 0.3) {
+    const avg = (lastFour.reduce((a, b) => a + b, 0) / lastFour.length).toFixed(1);
+    return [{
+      severity: 'info',
+      title: 'VO2 Max plateau (recent)',
+      detail: `Last ${lastFour.length} VO2 Max readings stable at ~${avg} mL/kg·min`,
+    }];
+  }
+
+  return [];
+}
+
 export function executeAnomalyDetection(
   db: DatabaseSync,
-  params: { days?: number; sensitivity?: string },
+  params: { days?: number; sensitivity?: string; timezone?: string },
 ): string {
-  const { days = 14, sensitivity = 'medium' } = params;
+  const { days = 14, sensitivity = 'medium', timezone } = params;
 
   const consecutiveThreshold = sensitivity === 'high' ? 2 : sensitivity === 'low' ? 4 : 3;
   const deviationThreshold = sensitivity === 'high' ? 5 : sensitivity === 'low' ? 15 : 10;
@@ -228,13 +328,15 @@ export function executeAnomalyDetection(
 
   const anomalies: Anomaly[] = [];
 
-  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, consecutiveThreshold));
-  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, consecutiveThreshold));
-  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, deviationThreshold));
-  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, deviationThreshold));
-  anomalies.push(...detectSleepDeficit(db, sleepThreshold));
-  anomalies.push(...detectMissingData(db));
-  anomalies.push(...detectWorkoutSpike(db));
+  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, consecutiveThreshold, timezone));
+  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, consecutiveThreshold, timezone));
+  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, deviationThreshold, timezone));
+  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, deviationThreshold, timezone));
+  anomalies.push(...detectSleepDeficit(db, sleepThreshold, timezone));
+  anomalies.push(...detectMissingData(db, timezone));
+  anomalies.push(...detectWorkoutSpike(db, timezone));
+  anomalies.push(...detectWeightTrend(db, days, consecutiveThreshold, timezone));
+  anomalies.push(...detectVo2MaxPlateau(db, days, timezone));
 
   if (anomalies.length === 0) {
     return `## Anomalies Check (last ${days} days)\n\n✅ No notable anomalies detected. All metrics within normal ranges.`;
@@ -251,11 +353,12 @@ export function executeAnomalyDetection(
 export function registerAnomaliesTool(
   api: PluginApi,
   db: DatabaseSync,
+  timezone?: string,
 ): void {
   api.registerTool({
     name: 'health_anomalies',
     description:
-      'Detect notable patterns and anomalies in recent health data. Checks for HR/HRV trends, metric deviations, sleep deficits, missing data, and workout spikes. Use for "anything unusual?" or "how is my recovery?"',
+      'Detect notable patterns and anomalies in recent health data. Checks for HR/HRV trends, metric deviations, sleep deficits, missing data, workout spikes, weight trends, and VO2 Max plateaus. Use for "anything unusual?" or "how is my recovery?"',
     parameters: Type.Object({
       days: Type.Optional(
         Type.Number({
@@ -272,7 +375,7 @@ export function registerAnomaliesTool(
       ),
     }),
     execute(_id, params) {
-      const text = executeAnomalyDetection(db, params as { days?: number; sensitivity?: string });
+      const text = executeAnomalyDetection(db, { ...params as { days?: number; sensitivity?: string }, timezone });
       return { content: [{ type: 'text' as const, text }] };
     },
   });

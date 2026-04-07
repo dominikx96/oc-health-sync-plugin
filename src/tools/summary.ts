@@ -8,6 +8,7 @@ export function registerSummaryTool(
   api: PluginApi,
   db: DatabaseSync,
   cacheTtlMinutes: number,
+  timezone?: string,
 ): void {
   api.registerTool({
     name: 'health_summary',
@@ -26,7 +27,7 @@ export function registerSummaryTool(
     }),
     execute(_id, params) {
       const { from, to, mode } = params as { from: string; to: string; mode?: SummaryMode };
-      const markdown = generateSummary(db, from, to, cacheTtlMinutes, mode);
+      const markdown = generateSummary(db, from, to, cacheTtlMinutes, mode, timezone);
       return { content: [{ type: 'text' as const, text: markdown }] };
     },
   });

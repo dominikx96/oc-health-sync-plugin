@@ -10,6 +10,7 @@ import {
 } from '../db/queries.js';
 import type { IngestSample } from '../db/queries.js';
 import { DATA_TYPE_MAP } from '../types/data-type-schema.js';
+import { isoToLocalDate } from '../utils/timezone.js';
 
 // Build reverse lookup: short name → full HK identifier + kind
 const SHORT_TO_HK: Record<string, { identifier: string; kind: string }> = {};
@@ -37,21 +38,21 @@ function deriveSampleKind(
 
 interface IngestRequestBody {
   device_id: string;
+  device_timezone?: string;
   data_type?: string;
   new_samples: IngestSample[];
   deleted_ids?: string[];
 }
 
 function extractAffectedDates(
-  samples: IngestSample[],
+  samples: Array<IngestSample & { local_date: string }>,
   deletedIds: string[],
   db: DatabaseSync,
 ): string[] {
   const dates = new Set<string>();
 
   for (const s of samples) {
-    const d = s.start_date.slice(0, 10);
-    dates.add(d);
+    dates.add(s.local_date);
   }
 
   // For deleted samples, we'd need to look up their dates.
@@ -61,7 +62,7 @@ function extractAffectedDates(
     const placeholders = deletedIds.map(() => '?').join(', ');
     const rows = db
       .prepare(
-        `SELECT DISTINCT date(start_date) as d FROM health_samples WHERE uuid IN (${placeholders})`,
+        `SELECT DISTINCT local_date as d FROM health_samples WHERE uuid IN (${placeholders})`,
       )
       .all(...deletedIds) as unknown as Array<{ d: string }>;
     for (const row of rows) {
@@ -76,6 +77,7 @@ export function registerIngestRoute(
   api: PluginApi,
   db: DatabaseSync,
   apiKey: string,
+  configTimezone: string,
 ): void {
   api.registerHttpRoute({
     path: '/api/v1/health/ingest',
@@ -106,6 +108,9 @@ export function registerIngestRoute(
         return true;
       }
 
+      // Use device_timezone from payload, fall back to configured timezone
+      const timezone = body.device_timezone || configTimezone;
+
       const newSamples = body.new_samples.map((s) => {
         const rawType = s.data_type ?? body.data_type ?? 'unknown';
         const dataType = normalizeDataType(rawType);
@@ -113,6 +118,7 @@ export function registerIngestRoute(
           ...s,
           data_type: dataType,
           sample_kind: s.sample_kind ?? deriveSampleKind(rawType, dataType),
+          local_date: isoToLocalDate(s.start_date, timezone),
         };
       });
       const deletedIds = body.deleted_ids ?? [];

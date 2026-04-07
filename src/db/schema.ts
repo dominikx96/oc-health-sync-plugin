@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS health_samples (
   workout_total_energy_kcal   REAL,
   workout_total_distance_m    REAL,
   workout_activity_name       TEXT,
+  local_date      TEXT,
   metadata_json   TEXT DEFAULT '{}',
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -33,6 +34,12 @@ CREATE INDEX IF NOT EXISTS idx_samples_kind_date
 
 CREATE INDEX IF NOT EXISTS idx_samples_deleted
   ON health_samples(deleted_at) WHERE deleted_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_samples_local_date
+  ON health_samples(data_type, local_date) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_samples_kind_local_date
+  ON health_samples(sample_kind, local_date) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS daily_summaries (
   date            TEXT PRIMARY KEY,

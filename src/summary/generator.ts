@@ -18,28 +18,8 @@ import {
 } from '../db/queries.js';
 import { renderDailySummary, renderRollupSummary } from './templates.js';
 import type { DailySummaryData, RollupSummaryData } from './templates.js';
-
-function getDayName(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long' });
-}
-
-function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
-  while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
-    current.setDate(current.getDate() + 1);
-  }
-  return dates;
-}
-
-function sevenDaysBefore(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().slice(0, 10);
-}
+import { dateRange, sevenDaysBefore, getDayName, todayIn } from '../utils/dates.js';
+import { localTimeToUtc, nextDay } from '../utils/timezone.js';
 
 function detectDailyAnomalies(
   db: DatabaseSync,
@@ -88,10 +68,11 @@ function generateDaySummary(
   db: DatabaseSync,
   date: string,
   cacheTtlMinutes: number,
+  timezone?: string,
 ): string {
   // Check cache
   const hash = getDataHash(db, date);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIn(timezone);
 
   if (date !== today) {
     const cached = getCachedSummary(db, date);
@@ -179,8 +160,10 @@ function generateDaySummary(
   );
 
   const weightRow = getLatestWeightUpTo(db, date);
-  const sleepStages = getSleepStages(db, date);
-  const sleepWindow = getSleepWindow(db, date);
+  const sleepStartUtc = localTimeToUtc(date, 18, timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const sleepEndUtc = localTimeToUtc(nextDay(date), 18, timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const sleepStages = getSleepStages(db, date, sleepStartUtc, sleepEndUtc);
+  const sleepWindow = getSleepWindow(db, date, sleepStartUtc, sleepEndUtc);
 
   const anomalies = detectDailyAnomalies(
     db,
@@ -229,6 +212,7 @@ function generateRollupSummary(
   db: DatabaseSync,
   from: string,
   to: string,
+  timezone?: string,
 ): string {
   const dates = dateRange(from, to);
   const sevenDaysBefore_ = sevenDaysBefore(from);
@@ -302,8 +286,11 @@ function generateRollupSummary(
   let totalSleepMinutes = 0;
   let sleepNights = 0;
   const stageTotals = new Map<number, number>();
+  const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   for (const d of dates) {
-    const stages = getSleepStages(db, d);
+    const ssUtc = localTimeToUtc(d, 18, tz);
+    const seUtc = localTimeToUtc(nextDay(d), 18, tz);
+    const stages = getSleepStages(db, d, ssUtc, seUtc);
     const nightMinutes = stages
       .filter((s) => s.stage !== 0 && s.stage !== 2)
       .reduce((sum, s) => sum + s.minutes, 0);
@@ -374,6 +361,7 @@ export function generateSummary(
   to: string,
   cacheTtlMinutes: number,
   mode: SummaryMode = 'auto',
+  timezone?: string,
 ): string {
   const dates = dateRange(from, to);
 
@@ -382,17 +370,17 @@ export function generateSummary(
   }
 
   if (dates.length === 1) {
-    return generateDaySummary(db, dates[0], cacheTtlMinutes);
+    return generateDaySummary(db, dates[0], cacheTtlMinutes, timezone);
   }
 
   const useRollup = mode === 'rollup' || (mode === 'auto' && dates.length > 3);
 
   if (useRollup) {
-    return generateRollupSummary(db, from, to);
+    return generateRollupSummary(db, from, to, timezone);
   }
 
   // Multi-day daily mode: compose individual summaries
-  const summaries = dates.map((d) => generateDaySummary(db, d, cacheTtlMinutes));
+  const summaries = dates.map((d) => generateDaySummary(db, d, cacheTtlMinutes, timezone));
 
   const header = `# Health Summary — ${from} to ${to} (${dates.length} days)\n`;
   return header + '\n---\n\n' + summaries.join('\n---\n\n');

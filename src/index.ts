@@ -22,8 +22,8 @@ export default definePluginEntry({
 
     // 3. Register HTTP routes
     registerHealthcheckRoute(api, db, config.apiKey);
-    registerIngestRoute(api, db, config.apiKey);
-    registerQueryRoutes(api, db, config.summaryCacheTtlMinutes);
+    registerIngestRoute(api, db, config.apiKey, config.timezone);
+    registerQueryRoutes(api, db, config.summaryCacheTtlMinutes, config.timezone);
 
     // 4. Register agent tools
     registerHealthTools(api, db, config);

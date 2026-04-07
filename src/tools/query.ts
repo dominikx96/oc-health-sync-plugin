@@ -7,39 +7,36 @@ import {
   getSleepDurationForDate,
 } from '../db/queries.js';
 import { METRIC_MAP } from '../utils/constants.js';
+import { dateRange } from '../utils/dates.js';
+import { localTimeToUtc, nextDay } from '../utils/timezone.js';
 
 const METRIC_KEYS = Object.keys(METRIC_MAP);
 
-function dateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
-  while (current <= end) {
-    dates.push(current.toISOString().slice(0, 10));
-    current.setDate(current.getDate() + 1);
-  }
-  return dates;
-}
-
 export function executeHealthQuery(
   db: DatabaseSync,
-  params: { metric: string; from: string; to: string; aggregation?: string },
+  params: { metric: string; from: string; to: string; aggregation?: string; timezone?: string },
 ): object {
-  const { metric, from, to, aggregation } = params;
+  const { metric, from, to, aggregation, timezone } = params;
+  const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Special case: sleep_duration
   if (metric === 'sleep_duration') {
     const dates = dateRange(from, to);
 
     if (aggregation === 'daily_breakdown') {
-      const days = dates.map((d) => ({
-        date: d,
-        value: Math.round(getSleepDurationForDate(db, d)),
-      }));
+      const days = dates.map((d) => {
+        const ssUtc = localTimeToUtc(d, 18, tz);
+        const seUtc = localTimeToUtc(nextDay(d), 18, tz);
+        return { date: d, value: Math.round(getSleepDurationForDate(db, d, ssUtc, seUtc)) };
+      });
       return { metric: 'sleep_duration', from, to, aggregation: 'daily_breakdown', days, unit: 'minutes' };
     }
 
-    const totalMinutes = dates.reduce((sum, d) => sum + getSleepDurationForDate(db, d), 0);
+    const totalMinutes = dates.reduce((sum, d) => {
+      const ssUtc = localTimeToUtc(d, 18, tz);
+      const seUtc = localTimeToUtc(nextDay(d), 18, tz);
+      return sum + getSleepDurationForDate(db, d, ssUtc, seUtc);
+    }, 0);
     const avgMinutes = dates.length > 0 ? totalMinutes / dates.length : 0;
     const agg = aggregation ?? 'avg';
     const value = agg === 'sum' ? totalMinutes : Math.round(avgMinutes);
@@ -76,6 +73,7 @@ export function executeHealthQuery(
 export function registerQueryTool(
   api: PluginApi,
   db: DatabaseSync,
+  timezone?: string,
 ): void {
   api.registerTool({
     name: 'health_query',
@@ -99,7 +97,7 @@ export function registerQueryTool(
       ),
     }),
     execute(_id, params) {
-      const result = executeHealthQuery(db, params as { metric: string; from: string; to: string; aggregation?: string });
+      const result = executeHealthQuery(db, { ...params as { metric: string; from: string; to: string; aggregation?: string }, timezone });
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   });

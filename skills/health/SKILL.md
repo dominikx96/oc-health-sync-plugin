@@ -10,6 +10,7 @@ tools:
   - health_anomalies
   - health_raw
   - health_compare
+  - health_completeness
 ---
 
 # MANDATORY RULES
@@ -167,6 +168,41 @@ exec: curl -s "$BASE/api/v1/health/compare?period_a_from=2026-03-01&period_a_to=
 
 **When to use:** "Compare this week vs last week", "How did March compare to February?", "Am I improving?". Period A is the baseline, Period B is the current/comparison period.
 
+## 6. Health Completeness
+
+**URL:** `$BASE/api/v1/health/completeness?from=YYYY-MM-DD&to=YYYY-MM-DD&metrics=METRIC1,METRIC2`
+
+Reports on data completeness: which metrics have data, coverage percentages, sample counts, and gap days.
+
+**`metrics`** (optional): Comma-separated list of metrics to check. If omitted, checks all known metrics plus sleep and workouts.
+
+**Example:**
+```
+exec: curl -s "$BASE/api/v1/health/completeness?from=2026-03-01&to=2026-03-31"
+exec: curl -s "$BASE/api/v1/health/completeness?from=2026-04-01&to=2026-04-07&metrics=steps,heart_rate,sleep_analysis"
+```
+
+**Response:**
+```json
+{
+  "from": "2026-03-01",
+  "to": "2026-03-31",
+  "total_days": 31,
+  "overall": {
+    "metrics_tracked": 12,
+    "metrics_missing": 4,
+    "avg_coverage_pct": 72,
+    "gap_days": ["2026-03-15", "2026-03-22"],
+    "gap_day_count": 2
+  },
+  "metrics": [
+    { "metric": "steps", "data_type": "HKQuantityTypeIdentifierStepCount", "unit": "count", "last_sample_date": "2026-03-31", "days_with_data": 30, "total_days": 31, "coverage_pct": 97, "total_samples": 4200, "avg_samples_per_day": 140 }
+  ]
+}
+```
+
+**When to use:** "Is my data complete?", "Any gaps in my tracking?", "What metrics am I missing?", "How reliable is my data this month?"
+
 ---
 
 # Analysis Scenarios
@@ -193,6 +229,15 @@ exec: curl -s "$BASE/api/v1/health/compare?period_a_from=2026-03-01&period_a_to=
 2. Call anomalies: `exec: curl -s "$BASE/api/v1/health/anomalies"`
 3. Combine the actual data from both responses
 
+### "Is my data complete?" / "Any tracking gaps?"
+1. Call completeness: `exec: curl -s "$BASE/api/v1/health/completeness?from=YYYY-MM-DD&to=YYYY-MM-DD"`
+2. Present metrics with low coverage and any gap days from the response
+
+### "Is my weight trending up?"
+1. Call anomalies with high sensitivity: `exec: curl -s "$BASE/api/v1/health/anomalies?days=30&sensitivity=high"`
+2. Call weight daily breakdown: `exec: curl -s "$BASE/api/v1/health/query?metric=weight&from=...&to=...&aggregation=daily_breakdown"`
+3. Present the trend from the anomalies response and the weight data
+
 ---
 
 # Date Handling
@@ -204,6 +249,7 @@ exec: curl -s "$BASE/api/v1/health/compare?period_a_from=2026-03-01&period_a_to=
   - "last 7 days" = today minus 6 through today
 - Date ranges are inclusive on both ends
 - `health/raw` uses full datetimes (YYYY-MM-DDTHH:MM:SS), all others use dates only (YYYY-MM-DD)
+- **Timezone:** The plugin uses the configured timezone (or system default) for internal "today" calculations. Users can set `timezone` in plugin config (e.g. `"Europe/Warsaw"`) or via `HEALTH_SYNC_TIMEZONE` env var.
 
 # Response Style
 

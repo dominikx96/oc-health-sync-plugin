@@ -7,6 +7,7 @@ export interface PluginConfig {
   apiKey: string;
   storagePath: string;
   summaryCacheTtlMinutes: number;
+  timezone: string;
 }
 
 const DEFAULT_STORAGE_PATH = '~/.openclaw/state/health-sync/health.sqlite';
@@ -48,6 +49,14 @@ function resolveCacheTtl(api: PluginApi): number {
   return DEFAULT_CACHE_TTL;
 }
 
+function resolveTimezone(api: PluginApi): string {
+  const fromConfig = api.config?.timezone as string | undefined;
+  if (fromConfig) return fromConfig;
+  const fromEnv = process.env['HEALTH_SYNC_TIMEZONE'];
+  if (fromEnv) return fromEnv;
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 export function getStoragePath(api: PluginApi): string {
   return resolveStoragePath(api);
 }
@@ -57,5 +66,6 @@ export function getConfig(api: PluginApi, db: DatabaseSync): PluginConfig {
     apiKey: resolveApiKey(api, db),
     storagePath: resolveStoragePath(api),
     summaryCacheTtlMinutes: resolveCacheTtl(api),
+    timezone: resolveTimezone(api),
   };
 }

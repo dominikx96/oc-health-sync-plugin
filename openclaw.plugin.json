@@ -4,7 +4,7 @@
   "description": "Receives Apple HealthKit data from the oc-health-sync iOS app, stores it locally in SQLite, and provides agent tools for health data analysis.",
   "skills": ["skills/health"],
   "contracts": {
-    "tools": ["health_summary", "health_query", "health_anomalies", "health_raw", "health_compare"]
+    "tools": ["health_summary", "health_query", "health_anomalies", "health_raw", "health_compare", "health_completeness"]
   },
   "configSchema": {
     "type": "object",
@@ -22,6 +22,11 @@
         "type": "number",
         "description": "How long to cache daily summaries before regenerating. 0 = always regenerate.",
         "default": 60
+      },
+      "timezone": {
+        "type": "string",
+        "description": "IANA timezone for date calculations (e.g. 'Europe/Warsaw', 'America/New_York'). Defaults to system timezone.",
+        "default": ""
       }
     }
   }
