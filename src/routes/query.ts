@@ -2,9 +2,11 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { sendJson } from '../utils/http.js';
 import { generateSummary } from '../summary/generator.js';
+import type { SummaryMode } from '../summary/generator.js';
 import { executeHealthQuery } from '../tools/query.js';
 import { executeAnomalyDetection } from '../tools/anomalies.js';
 import { executeRawQuery } from '../tools/raw.js';
+import { executeComparison } from '../tools/compare.js';
 
 function getQueryParams(url: string | undefined): URLSearchParams {
   if (!url) return new URLSearchParams();
@@ -27,13 +29,15 @@ export function registerQueryRoutes(
       const from = params.get('from');
       const to = params.get('to');
 
+      const mode = (params.get('mode') || 'auto') as SummaryMode;
+
       if (!from || !to) {
         sendJson(res, 400, { error: 'bad_request', message: 'Missing required params: from, to (YYYY-MM-DD)' });
         return true;
       }
 
       try {
-        const markdown = generateSummary(db, from, to, cacheTtlMinutes);
+        const markdown = generateSummary(db, from, to, cacheTtlMinutes, mode);
         sendJson(res, 200, { markdown });
       } catch (err) {
         console.error('[health-sync] Summary error:', err);
@@ -115,6 +119,45 @@ export function registerQueryRoutes(
       } catch (err) {
         console.error('[health-sync] Raw query error:', err);
         sendJson(res, 500, { error: 'internal_error', message: 'Failed to execute raw query' });
+      }
+      return true;
+    },
+  });
+
+  // GET /api/v1/health/compare?period_a_from=...&period_a_to=...&period_b_from=...&period_b_to=...&metrics=steps,hrv
+  api.registerHttpRoute({
+    path: '/api/v1/health/compare',
+    auth: 'plugin',
+    match: 'exact',
+    handler: async (req, res) => {
+      const params = getQueryParams(req.url);
+      const period_a_from = params.get('period_a_from');
+      const period_a_to = params.get('period_a_to');
+      const period_b_from = params.get('period_b_from');
+      const period_b_to = params.get('period_b_to');
+      const metricsParam = params.get('metrics');
+      const metrics = metricsParam ? metricsParam.split(',') : undefined;
+
+      if (!period_a_from || !period_a_to || !period_b_from || !period_b_to) {
+        sendJson(res, 400, {
+          error: 'bad_request',
+          message: 'Missing required params: period_a_from, period_a_to, period_b_from, period_b_to',
+        });
+        return true;
+      }
+
+      try {
+        const result = executeComparison(db, {
+          period_a_from,
+          period_a_to,
+          period_b_from,
+          period_b_to,
+          metrics,
+        });
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[health-sync] Compare error:', err);
+        sendJson(res, 500, { error: 'internal_error', message: 'Failed to execute comparison' });
       }
       return true;
     },

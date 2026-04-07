@@ -7,8 +7,8 @@
 
 ## Medium Effort
 
-- [ ] Weekly/monthly rollup summaries (aggregate view instead of concatenated daily dumps)
-- [ ] Period comparison query mode
+- [x] Weekly/monthly rollup summaries (aggregate view instead of concatenated daily dumps)
+- [x] Period comparison query mode
 
 ## Longer Term
 

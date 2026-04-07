@@ -5,6 +5,7 @@ import { registerSummaryTool } from './summary.js';
 import { registerQueryTool } from './query.js';
 import { registerAnomaliesTool } from './anomalies.js';
 import { registerRawTool } from './raw.js';
+import { registerCompareTool } from './compare.js';
 
 export function registerHealthTools(
   api: PluginApi,
@@ -15,4 +16,5 @@ export function registerHealthTools(
   registerQueryTool(api, db);
   registerAnomaliesTool(api, db);
   registerRawTool(api, db);
+  registerCompareTool(api, db);
 }

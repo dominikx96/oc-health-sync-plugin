@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { WorkoutRow } from '../db/queries.js';
 import {
   getStepsForDate,
   getActiveEnergyForDate,
@@ -15,8 +16,8 @@ import {
   setCachedSummary,
   getDailyMetricValues,
 } from '../db/queries.js';
-import { renderDailySummary } from './templates.js';
-import type { DailySummaryData } from './templates.js';
+import { renderDailySummary, renderRollupSummary } from './templates.js';
+import type { DailySummaryData, RollupSummaryData } from './templates.js';
 
 function getDayName(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -224,11 +225,155 @@ function generateDaySummary(
   return markdown;
 }
 
+function generateRollupSummary(
+  db: DatabaseSync,
+  from: string,
+  to: string,
+): string {
+  const dates = dateRange(from, to);
+  const sevenDaysBefore_ = sevenDaysBefore(from);
+
+  // Activity aggregates
+  let totalSteps = 0;
+  let totalActiveEnergy = 0;
+  let totalBasalEnergy = 0;
+  let totalDistance = 0;
+  let totalFlightsClimbed = 0;
+  let daysWithData = 0;
+
+  for (const d of dates) {
+    const steps = getStepsForDate(db, d);
+    const active = getActiveEnergyForDate(db, d);
+    const dist = getDistanceForDate(db, d);
+    const flightsResult = getAggregation(db, 'HKQuantityTypeIdentifierFlightsClimbed', d, d, 'sum');
+    const basalResult = getAggregation(db, 'HKQuantityTypeIdentifierBasalEnergyBurned', d, d, 'sum');
+
+    totalSteps += steps;
+    totalActiveEnergy += active;
+    totalDistance += dist;
+    totalFlightsClimbed += flightsResult.value ?? 0;
+    totalBasalEnergy += basalResult.value ?? 0;
+
+    if (steps > 0 || active > 0) daysWithData++;
+  }
+
+  const avgDailySteps = daysWithData > 0 ? Math.round(totalSteps / daysWithData) : 0;
+
+  // Walking speed average
+  const walkingSpeedResult = getAvgMetricForRange(
+    db,
+    'HKQuantityTypeIdentifierWalkingSpeed',
+    from,
+    to,
+  );
+
+  // Workouts
+  const allWorkouts: WorkoutRow[] = [];
+  for (const d of dates) {
+    allWorkouts.push(...getWorkouts(db, d));
+  }
+  const workoutTypeMap = new Map<string, { count: number; totalMinutes: number }>();
+  let totalWorkoutMinutes = 0;
+  for (const w of allWorkouts) {
+    const name = w.workout_activity_name ?? 'Workout';
+    const mins = (w.workout_duration_seconds ?? 0) / 60;
+    totalWorkoutMinutes += mins;
+    const entry = workoutTypeMap.get(name) ?? { count: 0, totalMinutes: 0 };
+    entry.count++;
+    entry.totalMinutes += mins;
+    workoutTypeMap.set(name, entry);
+  }
+  const workoutTypes = Array.from(workoutTypeMap.entries())
+    .map(([name, data]) => ({ name, count: data.count, totalMinutes: Math.round(data.totalMinutes) }))
+    .sort((a, b) => b.count - a.count);
+
+  // Vitals
+  const avgRestingHr = getAvgMetricForRange(db, 'HKQuantityTypeIdentifierRestingHeartRate', from, to);
+  const avgHrv = getAvgMetricForRange(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', from, to);
+  const avgSpo2 = getAvgMetricForRange(db, 'HKQuantityTypeIdentifierOxygenSaturation', from, to);
+  const avgRespiratoryRate = getAvgMetricForRange(db, 'HKQuantityTypeIdentifierRespiratoryRate', from, to);
+  const latestVo2Max = getLatestMetricForDate(db, 'HKQuantityTypeIdentifierVO2Max', to);
+
+  // Weight
+  const weightStart = getLatestWeightUpTo(db, from);
+  const weightEnd = getLatestWeightUpTo(db, to);
+
+  // Sleep averages
+  let totalSleepMinutes = 0;
+  let sleepNights = 0;
+  const stageTotals = new Map<number, number>();
+  for (const d of dates) {
+    const stages = getSleepStages(db, d);
+    const nightMinutes = stages
+      .filter((s) => s.stage !== 0 && s.stage !== 2)
+      .reduce((sum, s) => sum + s.minutes, 0);
+    if (nightMinutes > 0) {
+      sleepNights++;
+      totalSleepMinutes += nightMinutes;
+      for (const s of stages) {
+        stageTotals.set(s.stage, (stageTotals.get(s.stage) ?? 0) + s.minutes);
+      }
+    }
+  }
+  const avgSleepMinutes = sleepNights > 0 ? Math.round(totalSleepMinutes / sleepNights) : 0;
+  const avgSleepStages = sleepNights > 0
+    ? Array.from(stageTotals.entries()).map(([stage, total]) => ({
+        stage,
+        minutes: Math.round(total / sleepNights),
+      }))
+    : [];
+
+  // Anomalies (collect from daily anomaly detection)
+  const allAnomalies: string[] = [];
+  // Check HRV trend over the period
+  const restingHr7dAvg = getAvgMetricForRange(db, 'HKQuantityTypeIdentifierRestingHeartRate', sevenDaysBefore_, from);
+  if (avgRestingHr !== null && restingHr7dAvg !== null && restingHr7dAvg > 0) {
+    const pctDiff = ((avgRestingHr - restingHr7dAvg) / restingHr7dAvg) * 100;
+    if (pctDiff > 6) {
+      allAnomalies.push(
+        `Resting HR elevated over period: ${avgRestingHr} bpm avg vs prior 7-day avg ${restingHr7dAvg} bpm (+${pctDiff.toFixed(1)}%)`,
+      );
+    }
+  }
+
+  const data: RollupSummaryData = {
+    from,
+    to,
+    daysCount: dates.length,
+    daysWithData,
+    totalSteps,
+    avgDailySteps,
+    totalActiveEnergy: Math.round(totalActiveEnergy),
+    totalBasalEnergy: Math.round(totalBasalEnergy),
+    totalDistance: Math.round(totalDistance),
+    totalFlightsClimbed: Math.round(totalFlightsClimbed),
+    avgWalkingSpeed: walkingSpeedResult,
+    workoutCount: allWorkouts.length,
+    totalWorkoutMinutes: Math.round(totalWorkoutMinutes),
+    workoutTypes,
+    avgRestingHr,
+    avgHrv,
+    avgSpo2,
+    avgRespiratoryRate,
+    latestVo2Max,
+    weightStart: weightStart ? { value: weightStart.value, unit: weightStart.unit } : null,
+    weightEnd: weightEnd ? { value: weightEnd.value, unit: weightEnd.unit } : null,
+    avgSleepMinutes,
+    avgSleepStages,
+    anomalies: allAnomalies,
+  };
+
+  return renderRollupSummary(data);
+}
+
+export type SummaryMode = 'daily' | 'rollup' | 'auto';
+
 export function generateSummary(
   db: DatabaseSync,
   from: string,
   to: string,
   cacheTtlMinutes: number,
+  mode: SummaryMode = 'auto',
 ): string {
   const dates = dateRange(from, to);
 
@@ -240,7 +385,13 @@ export function generateSummary(
     return generateDaySummary(db, dates[0], cacheTtlMinutes);
   }
 
-  // Multi-day: compose individual summaries
+  const useRollup = mode === 'rollup' || (mode === 'auto' && dates.length > 3);
+
+  if (useRollup) {
+    return generateRollupSummary(db, from, to);
+  }
+
+  // Multi-day daily mode: compose individual summaries
   const summaries = dates.map((d) => generateDaySummary(db, d, cacheTtlMinutes));
 
   const header = `# Health Summary — ${from} to ${to} (${dates.length} days)\n`;

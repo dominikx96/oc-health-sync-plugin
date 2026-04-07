@@ -9,6 +9,7 @@ tools:
   - health_query
   - health_anomalies
   - health_raw
+  - health_compare
 ---
 
 # MANDATORY RULES
@@ -47,18 +48,25 @@ Use your `exec` tool with `curl -s` to call these endpoints.
 
 ## 1. Health Summary
 
-**URL:** `$BASE/api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD`
+**URL:** `$BASE/api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&mode=MODE`
 
-Returns a markdown summary with activity, workouts, vitals, sleep, and anomalies for each day in the range.
+Returns a markdown summary with activity, workouts, vitals, sleep, and anomalies.
 
-**Example:**
+**Mode** (optional): `auto` (default), `rollup`, or `daily`
+- `auto` — rollup aggregate view for ranges >3 days, per-day breakdown otherwise
+- `rollup` — always aggregate: totals, averages, workout counts, weight change over the period
+- `daily` — always per-day breakdown (concatenated daily summaries)
+
+**Examples:**
 ```
 exec: curl -s "$BASE/api/v1/health/summary?from=2026-04-01&to=2026-04-03"
+exec: curl -s "$BASE/api/v1/health/summary?from=2026-03-01&to=2026-03-31&mode=rollup"
+exec: curl -s "$BASE/api/v1/health/summary?from=2026-04-01&to=2026-04-07&mode=daily"
 ```
 
 **Response:** `{ "markdown": "# Health Summary — 2026-04-01 ..." }`
 
-**When to use:** Broad questions — "How was my day?", "Summarize this week", "Weekly health report". Start here unless the user asks for a specific number.
+**When to use:** Broad questions — "How was my day?", "Summarize this week", "Weekly health report". Start here unless the user asks for a specific number. For weekly/monthly reports, `rollup` gives a cleaner aggregate view.
 
 ## 2. Health Query
 
@@ -131,6 +139,34 @@ exec: curl -s "$BASE/api/v1/health/raw?data_type=heart_rate&from=2026-04-03T10:0
 
 **When to use:** Last resort for detail — "Show me HR samples during my run", "What were my exact sleep stages?" Use summary or query first.
 
+## 5. Health Compare
+
+**URL:** `$BASE/api/v1/health/compare?period_a_from=YYYY-MM-DD&period_a_to=YYYY-MM-DD&period_b_from=YYYY-MM-DD&period_b_to=YYYY-MM-DD&metrics=METRIC1,METRIC2`
+
+Compares two time periods side by side. Returns each metric's value for both periods with absolute delta and percentage change.
+
+**`metrics`** (optional): Comma-separated list. Defaults to all: steps, active_energy, distance, flights_climbed, basal_energy, resting_hr, hrv, spo2, respiratory_rate, walking_speed, sleep_duration
+
+**Example:**
+```
+exec: curl -s "$BASE/api/v1/health/compare?period_a_from=2026-03-24&period_a_to=2026-03-30&period_b_from=2026-03-31&period_b_to=2026-04-06"
+exec: curl -s "$BASE/api/v1/health/compare?period_a_from=2026-03-01&period_a_to=2026-03-31&period_b_from=2026-04-01&period_b_to=2026-04-06&metrics=steps,hrv,sleep_duration"
+```
+
+**Response:**
+```json
+{
+  "period_a": { "from": "2026-03-24", "to": "2026-03-30" },
+  "period_b": { "from": "2026-03-31", "to": "2026-04-06" },
+  "comparison": [
+    { "metric": "steps", "unit": "count", "period_a": 62341, "period_b": 58102, "delta": -4239, "delta_percent": -6.8 },
+    { "metric": "hrv", "unit": "ms", "period_a": 42.5, "period_b": 45.2, "delta": 2.7, "delta_percent": 6.4 }
+  ]
+}
+```
+
+**When to use:** "Compare this week vs last week", "How did March compare to February?", "Am I improving?". Period A is the baseline, Period B is the current/comparison period.
+
 ---
 
 # Analysis Scenarios
@@ -149,11 +185,11 @@ exec: curl -s "$BASE/api/v1/health/raw?data_type=heart_rate&from=2026-04-03T10:0
 2. Present the `value` from the response
 
 ### "Compare this week vs last week"
-1. Call query twice — once for each week's date range
-2. Present side-by-side with actual numbers from both responses
+1. Call compare: `exec: curl -s "$BASE/api/v1/health/compare?period_a_from=LAST_MONDAY&period_a_to=LAST_SUNDAY&period_b_from=THIS_MONDAY&period_b_to=TODAY"`
+2. Present the comparison table with deltas from the response
 
 ### "Give me a weekly report"
-1. Call summary for the week: `exec: curl -s "$BASE/api/v1/health/summary?from=MONDAY&to=SUNDAY"`
+1. Call summary with rollup: `exec: curl -s "$BASE/api/v1/health/summary?from=MONDAY&to=SUNDAY&mode=rollup"`
 2. Call anomalies: `exec: curl -s "$BASE/api/v1/health/anomalies"`
 3. Combine the actual data from both responses
 

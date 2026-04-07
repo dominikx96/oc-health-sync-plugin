@@ -1,6 +1,39 @@
 import type { WorkoutRow, SleepStageRow } from '../db/queries.js';
 import { SLEEP_STAGES } from '../utils/constants.js';
 
+export interface RollupSummaryData {
+  from: string;
+  to: string;
+  daysCount: number;
+  daysWithData: number;
+  // Activity totals + daily averages
+  totalSteps: number;
+  avgDailySteps: number;
+  totalActiveEnergy: number;
+  totalBasalEnergy: number;
+  totalDistance: number;
+  totalFlightsClimbed: number;
+  avgWalkingSpeed: number | null;
+  // Workouts
+  workoutCount: number;
+  totalWorkoutMinutes: number;
+  workoutTypes: Array<{ name: string; count: number; totalMinutes: number }>;
+  // Vitals averages
+  avgRestingHr: number | null;
+  avgHrv: number | null;
+  avgSpo2: number | null;
+  avgRespiratoryRate: number | null;
+  latestVo2Max: number | null;
+  // Body
+  weightStart: { value: number; unit: string } | null;
+  weightEnd: { value: number; unit: string } | null;
+  // Sleep
+  avgSleepMinutes: number;
+  avgSleepStages: SleepStageRow[];
+  // Anomalies
+  anomalies: string[];
+}
+
 export interface DailySummaryData {
   date: string;
   dayName: string;
@@ -155,6 +188,114 @@ export function renderDailySummary(data: DailySummaryData): string {
       stageBreakdown.push(`Awake: ${formatDuration(awakeStage.minutes)}`);
     }
 
+    if (stageBreakdown.length > 0) {
+      lines.push(`- ${stageBreakdown.join(' | ')}`);
+    }
+    sections.push(lines.join('\n'));
+  }
+
+  // Notable
+  if (data.anomalies.length > 0) {
+    sections.push(
+      ['## Notable', ...data.anomalies.map((a) => `- ${a}`)].join('\n'),
+    );
+  }
+
+  return sections.join('\n\n') + '\n';
+}
+
+export function renderRollupSummary(data: RollupSummaryData): string {
+  const sections: string[] = [];
+
+  sections.push(
+    `# Health Summary — ${data.from} to ${data.to} (${data.daysCount} days, ${data.daysWithData} with data)`,
+  );
+
+  // Activity
+  if (data.totalSteps > 0 || data.totalActiveEnergy > 0 || data.totalDistance > 0) {
+    const lines = ['## Activity'];
+    if (data.totalSteps > 0) {
+      lines.push(`- Steps: ${formatNumber(data.totalSteps)} total (${formatNumber(data.avgDailySteps)}/day avg)`);
+    }
+    if (data.totalActiveEnergy > 0) {
+      lines.push(`- Active energy: ${formatNumber(data.totalActiveEnergy)} kcal total`);
+    }
+    if (data.totalBasalEnergy > 0) {
+      lines.push(`- Basal energy: ${formatNumber(data.totalBasalEnergy)} kcal total`);
+    }
+    if (data.totalActiveEnergy > 0 && data.totalBasalEnergy > 0) {
+      lines.push(`- Total energy: ${formatNumber(data.totalActiveEnergy + data.totalBasalEnergy)} kcal`);
+    }
+    if (data.totalDistance > 0) {
+      lines.push(`- Distance: ${formatNumber(data.totalDistance / 1000, 1)} km total`);
+    }
+    if (data.totalFlightsClimbed > 0) {
+      lines.push(`- Flights climbed: ${formatNumber(data.totalFlightsClimbed)} total`);
+    }
+    if (data.avgWalkingSpeed !== null) {
+      lines.push(`- Walking speed: ${formatNumber(data.avgWalkingSpeed, 1)} km/hr avg`);
+    }
+    sections.push(lines.join('\n'));
+  }
+
+  // Workouts
+  if (data.workoutCount > 0) {
+    const lines = ['## Workouts'];
+    lines.push(`- ${data.workoutCount} sessions, ${formatDuration(data.totalWorkoutMinutes)} total`);
+    for (const wt of data.workoutTypes) {
+      lines.push(`- ${wt.name}: ${wt.count}x, ${formatDuration(wt.totalMinutes)}`);
+    }
+    sections.push(lines.join('\n'));
+  }
+
+  // Vitals
+  const vitalLines: string[] = [];
+  if (data.avgRestingHr !== null) {
+    vitalLines.push(`- Resting heart rate: ${data.avgRestingHr} bpm avg`);
+  }
+  if (data.avgHrv !== null) {
+    vitalLines.push(`- HRV (SDNN): ${data.avgHrv} ms avg`);
+  }
+  if (data.avgSpo2 !== null) {
+    vitalLines.push(`- SpO2: ${Math.round(data.avgSpo2 * 100)}% avg`);
+  }
+  if (data.avgRespiratoryRate !== null) {
+    vitalLines.push(`- Respiratory rate: ${data.avgRespiratoryRate} breaths/min avg`);
+  }
+  if (data.latestVo2Max !== null) {
+    vitalLines.push(`- VO2 Max: ${formatNumber(data.latestVo2Max, 1)} mL/kg·min (latest)`);
+  }
+  if (vitalLines.length > 0) {
+    sections.push(['## Vitals', ...vitalLines].join('\n'));
+  }
+
+  // Body
+  if (data.weightStart || data.weightEnd) {
+    const lines = ['## Body'];
+    if (data.weightStart && data.weightEnd) {
+      const delta = data.weightEnd.value - data.weightStart.value;
+      const sign = delta >= 0 ? '+' : '';
+      lines.push(
+        `- Weight: ${formatNumber(data.weightStart.value, 1)} → ${formatNumber(data.weightEnd.value, 1)} ${data.weightEnd.unit} (${sign}${formatNumber(delta, 1)})`,
+      );
+    } else {
+      const w = data.weightStart ?? data.weightEnd!;
+      lines.push(`- Weight: ${formatNumber(w.value, 1)} ${w.unit}`);
+    }
+    sections.push(lines.join('\n'));
+  }
+
+  // Sleep
+  if (data.avgSleepMinutes > 0) {
+    const lines = ['## Sleep (nightly average)'];
+    lines.push(`- Average: ${formatDuration(data.avgSleepMinutes)}`);
+
+    const stageBreakdown: string[] = [];
+    for (const stage of data.avgSleepStages) {
+      if (stage.stage === 0 || stage.stage === 2) continue;
+      const name = SLEEP_STAGES[stage.stage] ?? `Stage ${stage.stage}`;
+      stageBreakdown.push(`${name}: ${formatDuration(stage.minutes)}`);
+    }
     if (stageBreakdown.length > 0) {
       lines.push(`- ${stageBreakdown.join(' | ')}`);
     }
