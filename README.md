@@ -62,11 +62,13 @@ openclaw gateway restart
 
 - **Ingest endpoint** — receives health samples from the iOS app via `POST /api/v1/health/ingest`
 - **Health check** — `GET /api/v1/health` for connection testing
-- **Agent tools** — 4 tools the OpenClaw agent uses to answer health questions:
+- **Agent tools** — 6 tools the OpenClaw agent uses to answer health questions:
   - `health_summary` — daily/weekly/monthly markdown summaries
   - `health_query` — specific metric queries with aggregation
   - `health_anomalies` — trend detection (HRV decline, sleep deficit, etc.)
   - `health_raw` — raw sample access
+  - `health_compare` — side-by-side period comparison
+  - `health_completeness` — data coverage and gap detection
 - **Auto-generated API key** — zero-config install, key generated on first run
 - **Summary caching** — repeat queries are fast, cache invalidates when new data arrives
 - **Zero native dependencies** — uses Node's built-in `node:sqlite`, works with OpenClaw's `--ignore-scripts` install
@@ -120,39 +122,76 @@ In the iOS app, set the server URL to `http://<tailscale-ip>:18789`, paste your 
 
 ---
 
-## Optional: Health Coach agent
+## Setting up a Health Coach agent
 
-Create a dedicated OpenClaw agent with a health-analyst persona that uses this plugin's tools and skill.
+The plugin provides tools and a skill — you still need an agent to talk to. Pick one of the options below.
 
-```bash
-./scripts/setup-agent.sh
-```
-
-This creates the agent workspace at `~/.openclaw/agents/health-coach/` with an `IDENTITY.md` defining the persona.
-
-Then add the agent to `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "agents": {
-    "list": [
-      { "id": "health-coach", "skills": ["health-sync"] }
-    ]
-  }
-}
-```
-
-Talk to it:
+### Option A: Add the skill to your default agent (fastest)
 
 ```bash
-# Single message
+openclaw agents set-skill --agent default --add health-sync
+```
+
+Done. Your default agent can now answer health questions. Try it:
+
+```bash
+openclaw agent -m "How was my sleep last night?"
+```
+
+### Option B: Create a dedicated Health Coach agent
+
+Create a new agent with a health-analyst persona. Run these commands:
+
+```bash
+openclaw agents add health-coach --non-interactive
+openclaw agents set-skill --agent health-coach --add health-sync
+```
+
+Then set its identity — copy the block below into `~/.openclaw/agents/health-coach/IDENTITY.md`:
+
+```markdown
+---
+name: Health Analyst
+emoji: "\U0001F4CA"
+theme: dark
+---
+
+# Role
+
+You are a personal health data analyst. You have access to the user's Apple
+HealthKit data (heart rate, HRV, sleep, steps, workouts, weight, SpO2,
+respiratory rate) synced from their iPhone and Apple Watch.
+
+# Behavior
+
+- Lead with the most relevant finding, not a data dump
+- Compare current values to recent trends (7-day and 30-day averages)
+- Flag anomalies proactively even when not asked
+- Use exact numbers with units — "6h 42m sleep", "72 bpm resting HR", "8,431 steps"
+- When data is missing or sparse, say so directly
+- Keep responses concise — one clear insight per paragraph
+- Never diagnose, prescribe, or give medical advice — report what the data shows
+
+# Anti-patterns
+
+- Do not speculate about causes without data to support it
+- Do not use filler phrases like "Let me check that for you"
+- Do not repeat back the user's question before answering
+- Do not add disclaimers to every response — one mention that you're not a doctor is enough per conversation
+```
+
+Point the agent at the identity file and start chatting:
+
+```bash
+openclaw agents set-identity --agent health-coach --from-identity
 openclaw agent --agent health-coach -m "How was my health this week?"
+```
 
-# Interactive terminal UI
+Or use the interactive terminal:
+
+```bash
 openclaw tui
 ```
-
-The agent has access to all four health tools (`health_summary`, `health_query`, `health_anomalies`, `health_raw`) and knows how to analyze your data.
 
 ---
 
