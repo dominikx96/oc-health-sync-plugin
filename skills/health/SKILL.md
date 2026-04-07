@@ -15,19 +15,21 @@ tools:
 
 **You MUST follow these rules for EVERY health-related question. No exceptions.**
 
-1. **ALWAYS fetch data from the API before answering.** Use `web_fetch` to call the health endpoints below. Do NOT skip this step.
+1. **ALWAYS fetch data from the API before answering.** Use `exec` with `curl` to call the health endpoints below. Do NOT skip this step.
 2. **NEVER generate, estimate, invent, or recall health data from memory.** Every number you present must come from an API response you received in this conversation turn.
 3. **If an API call returns no data or an error, tell the user honestly.** Say "No data found for [period]" — do not fill in gaps with guesses.
 4. **Do NOT use data from previous conversation turns.** Always make a fresh API call. Health data may have been updated.
 5. **Show the source.** When presenting numbers, they must match what the API returned.
 
-If you cannot call `web_fetch` for any reason, tell the user: "I can't access the health data API right now. Please try again or check that the gateway is running."
+If you cannot call `exec` for any reason, tell the user: "I can't access the health data API right now. Please try again or check that the gateway is running."
 
 ---
 
 # How to fetch health data
 
-Use your `web_fetch` tool to call these endpoints. The base URL is always `http://127.0.0.1:18789`.
+Use your `exec` tool with `curl -s` to call these endpoints. The base URL is always `http://127.0.0.1:18789`.
+
+**Important:** Do NOT use `web_fetch` — it blocks localhost connections. Always use `exec` with `curl -s`.
 
 ## 1. Health Summary
 
@@ -37,7 +39,7 @@ Returns a markdown summary with activity, workouts, vitals, sleep, and anomalies
 
 **Example:**
 ```
-web_fetch("http://127.0.0.1:18789/api/v1/health/summary?from=2026-04-01&to=2026-04-03")
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/summary?from=2026-04-01&to=2026-04-03"
 ```
 
 **Response:** `{ "markdown": "# Health Summary — 2026-04-01 ..." }`
@@ -61,9 +63,9 @@ The `aggregation` parameter is optional — each metric has a sensible default:
 
 **Examples:**
 ```
-web_fetch("http://127.0.0.1:18789/api/v1/health/query?metric=steps&from=2026-04-01&to=2026-04-07&aggregation=sum")
-web_fetch("http://127.0.0.1:18789/api/v1/health/query?metric=hrv&from=2026-04-01&to=2026-04-07&aggregation=daily_breakdown")
-web_fetch("http://127.0.0.1:18789/api/v1/health/query?metric=weight&from=2026-03-01&to=2026-04-07&aggregation=daily_breakdown")
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/query?metric=steps&from=2026-04-01&to=2026-04-07&aggregation=sum"
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/query?metric=hrv&from=2026-04-01&to=2026-04-07&aggregation=daily_breakdown"
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/query?metric=weight&from=2026-03-01&to=2026-04-07&aggregation=daily_breakdown"
 ```
 
 **Response (single value):**
@@ -88,7 +90,7 @@ Scans recent data for notable patterns. Both parameters are optional.
 
 **Example:**
 ```
-web_fetch("http://127.0.0.1:18789/api/v1/health/anomalies?days=14&sensitivity=high")
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/anomalies?days=14&sensitivity=high"
 ```
 
 **Response:** `{ "markdown": "## Anomalies Detected ...\n⚠️ **HRV declining trend**: ..." }`
@@ -105,7 +107,7 @@ Returns individual sample records. Uses full ISO datetimes (not just dates).
 
 **Example:**
 ```
-web_fetch("http://127.0.0.1:18789/api/v1/health/raw?data_type=heart_rate&from=2026-04-03T10:00:00&to=2026-04-03T12:00:00&limit=50")
+exec: curl -s "http://127.0.0.1:18789/api/v1/health/raw?data_type=heart_rate&from=2026-04-03T10:00:00&to=2026-04-03T12:00:00&limit=50"
 ```
 
 **Response:**
@@ -120,16 +122,16 @@ web_fetch("http://127.0.0.1:18789/api/v1/health/raw?data_type=heart_rate&from=20
 # Analysis Scenarios
 
 ### "How was my sleep last night?"
-1. Call summary for yesterday: `web_fetch("http://127.0.0.1:18789/api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD")` (use yesterday's date)
+1. Call summary for yesterday: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD"` (use yesterday's date)
 2. Present duration, stages, and sleep window from the response
 
 ### "Am I overtraining?"
-1. Call anomalies with high sensitivity: `web_fetch("http://127.0.0.1:18789/api/v1/health/anomalies?days=14&sensitivity=high")`
-2. Call HRV daily breakdown: `web_fetch("http://127.0.0.1:18789/api/v1/health/query?metric=hrv&from=...&to=...&aggregation=daily_breakdown")`
+1. Call anomalies with high sensitivity: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/anomalies?days=14&sensitivity=high"`
+2. Call HRV daily breakdown: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/query?metric=hrv&from=...&to=...&aggregation=daily_breakdown"`
 3. Analyze the trends from actual data
 
 ### "How many steps this week?"
-1. Call query: `web_fetch("http://127.0.0.1:18789/api/v1/health/query?metric=steps&from=YYYY-MM-DD&to=YYYY-MM-DD&aggregation=sum")`
+1. Call query: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/query?metric=steps&from=YYYY-MM-DD&to=YYYY-MM-DD&aggregation=sum"`
 2. Present the `value` from the response
 
 ### "Compare this week vs last week"
@@ -137,8 +139,8 @@ web_fetch("http://127.0.0.1:18789/api/v1/health/raw?data_type=heart_rate&from=20
 2. Present side-by-side with actual numbers from both responses
 
 ### "Give me a weekly report"
-1. Call summary for the week: `web_fetch("http://127.0.0.1:18789/api/v1/health/summary?from=MONDAY&to=SUNDAY")`
-2. Call anomalies: `web_fetch("http://127.0.0.1:18789/api/v1/health/anomalies")`
+1. Call summary for the week: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/summary?from=MONDAY&to=SUNDAY"`
+2. Call anomalies: `exec: curl -s "http://127.0.0.1:18789/api/v1/health/anomalies"`
 3. Combine the actual data from both responses
 
 ---
