@@ -3,6 +3,9 @@
   "name": "Health Sync",
   "description": "Receives Apple HealthKit data from the oc-health-sync iOS app, stores it locally in SQLite, and provides agent tools for health data analysis.",
   "skills": ["skills/health"],
+  "contracts": {
+    "tools": ["health_summary", "health_query", "health_anomalies", "health_raw"]
+  },
   "configSchema": {
     "type": "object",
     "properties": {
