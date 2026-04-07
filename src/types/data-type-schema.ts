@@ -49,6 +49,26 @@ export const DATA_TYPE_MAP = {
     kind: 'quantity',
     unit: '%',
   },
+  vo2_max: {
+    identifier: 'HKQuantityTypeIdentifierVO2Max',
+    kind: 'quantity',
+    unit: 'mL/kg·min',
+  },
+  flights_climbed: {
+    identifier: 'HKQuantityTypeIdentifierFlightsClimbed',
+    kind: 'quantity',
+    unit: 'count',
+  },
+  basal_energy: {
+    identifier: 'HKQuantityTypeIdentifierBasalEnergyBurned',
+    kind: 'quantity',
+    unit: 'kcal',
+  },
+  walking_speed: {
+    identifier: 'HKQuantityTypeIdentifierWalkingSpeed',
+    kind: 'quantity',
+    unit: 'km/hr',
+  },
   sleep_analysis: {
     identifier: 'HKCategoryTypeIdentifierSleepAnalysis',
     kind: 'category',
@@ -60,24 +80,3 @@ export const DATA_TYPE_MAP = {
     unit: 'workout',
   },
 } as const;
-
-export type DataTypeKey = keyof typeof DATA_TYPE_MAP;
-
-export type SampleKind = 'quantity' | 'category' | 'workout';
-
-export type APISample = {
-  uuid: string;
-  value: number | string;
-  unit: string;
-  start_date: string;
-  end_date: string;
-  source_name: string;
-  source_bundle_id: string;
-};
-
-export type IngestRequest = {
-  device_id: string;
-  data_type: DataTypeKey;
-  new_samples: APISample[];
-  deleted_ids: string[];
-};

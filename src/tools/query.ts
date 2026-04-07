@@ -80,7 +80,7 @@ export function registerQueryTool(
   api.registerTool({
     name: 'health_query',
     description:
-      'Query a specific health metric with aggregation. Available metrics: steps, active_energy, distance, heart_rate, resting_hr, hrv, spo2, respiratory_rate, weight, body_fat, sleep_duration. Aggregations: avg, sum, min, max, latest, daily_breakdown.',
+      `Query a specific health metric with aggregation. Available metrics: ${METRIC_KEYS.join(', ')}, sleep_duration. Aggregations: avg, sum, min, max, latest, daily_breakdown.`,
     parameters: Type.Object({
       metric: Type.String({
         description: `Metric to query. One of: ${METRIC_KEYS.join(', ')}, sleep_duration`,

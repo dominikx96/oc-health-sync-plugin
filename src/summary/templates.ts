@@ -14,6 +14,10 @@ export interface DailySummaryData {
   hrv7dAvg: number | null;
   spo2: number | null;
   respiratoryRate: number | null;
+  vo2Max: number | null;
+  flightsClimbed: number;
+  basalEnergy: number;
+  walkingSpeed: number | null;
   weight: { value: number; unit: string } | null;
   sleepStages: SleepStageRow[];
   sleepStart: string | null;
@@ -50,15 +54,23 @@ export function renderDailySummary(data: DailySummaryData): string {
   sections.push(`# Health Summary — ${data.date} (${data.dayName})`);
 
   // Activity
-  if (data.steps > 0 || data.activeEnergy > 0 || data.distance > 0) {
+  if (data.steps > 0 || data.activeEnergy > 0 || data.distance > 0 || data.flightsClimbed > 0 || data.basalEnergy > 0) {
     const lines = ['## Activity'];
     if (data.steps > 0) lines.push(`- Steps: ${formatNumber(data.steps)}`);
     if (data.activeEnergy > 0)
       lines.push(`- Active energy: ${formatNumber(data.activeEnergy)} kcal`);
+    if (data.basalEnergy > 0)
+      lines.push(`- Basal energy: ${formatNumber(data.basalEnergy)} kcal`);
+    if (data.activeEnergy > 0 && data.basalEnergy > 0)
+      lines.push(`- Total energy: ${formatNumber(data.activeEnergy + data.basalEnergy)} kcal`);
     if (data.distance > 0)
       lines.push(
         `- Distance: ${formatNumber(data.distance / 1000, 1)} km`,
       );
+    if (data.flightsClimbed > 0)
+      lines.push(`- Flights climbed: ${formatNumber(data.flightsClimbed)}`);
+    if (data.walkingSpeed !== null)
+      lines.push(`- Walking speed: ${formatNumber(data.walkingSpeed, 1)} km/hr`);
     sections.push(lines.join('\n'));
   }
 
@@ -104,6 +116,8 @@ export function renderDailySummary(data: DailySummaryData): string {
     vitalLines.push(
       `- Respiratory rate: ${data.respiratoryRate} breaths/min`,
     );
+  if (data.vo2Max !== null)
+    vitalLines.push(`- VO2 Max: ${formatNumber(data.vo2Max, 1)} mL/kg·min`);
   if (vitalLines.length > 0) {
     sections.push(['## Vitals', ...vitalLines].join('\n'));
   }

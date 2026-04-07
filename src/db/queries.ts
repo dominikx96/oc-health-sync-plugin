@@ -348,24 +348,6 @@ export function getDistanceForDate(
   return row.total;
 }
 
-export function getHeartRateStats(
-  db: DatabaseSync,
-  date: string,
-): { avg_hr: number | null; min_hr: number | null; max_hr: number | null; count: number } {
-  const row = db.prepare(`
-    SELECT
-      ROUND(AVG(value), 1) as avg_hr,
-      MIN(value) as min_hr,
-      MAX(value) as max_hr,
-      COUNT(*) as count
-    FROM health_samples
-    WHERE data_type = 'HKQuantityTypeIdentifierHeartRate'
-      AND date(start_date) = ?
-      AND deleted_at IS NULL
-  `).get(date) as unknown as { avg_hr: number | null; min_hr: number | null; max_hr: number | null; count: number };
-  return row;
-}
-
 export function getLatestMetricForDate(
   db: DatabaseSync,
   dataType: string,

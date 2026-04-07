@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 
-export function resolvePath(dbPath: string): string {
+function resolvePath(dbPath: string): string {
   if (dbPath.startsWith('~')) {
     return dbPath.replace('~', homedir());
   }

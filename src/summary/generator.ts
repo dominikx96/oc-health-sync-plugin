@@ -6,6 +6,7 @@ import {
   getWorkouts,
   getLatestMetricForDate,
   getAvgMetricForRange,
+  getAggregation,
   getSleepStages,
   getSleepWindow,
   getLatestWeightUpTo,
@@ -149,6 +150,33 @@ function generateDaySummary(
     date,
   );
 
+  const vo2Max = getLatestMetricForDate(
+    db,
+    'HKQuantityTypeIdentifierVO2Max',
+    date,
+  );
+  const flightsResult = getAggregation(
+    db,
+    'HKQuantityTypeIdentifierFlightsClimbed',
+    date,
+    date,
+    'sum',
+  );
+  const flightsClimbed = flightsResult.value ?? 0;
+  const basalResult = getAggregation(
+    db,
+    'HKQuantityTypeIdentifierBasalEnergyBurned',
+    date,
+    date,
+    'sum',
+  );
+  const basalEnergy = basalResult.value ?? 0;
+  const walkingSpeed = getLatestMetricForDate(
+    db,
+    'HKQuantityTypeIdentifierWalkingSpeed',
+    date,
+  );
+
   const weightRow = getLatestWeightUpTo(db, date);
   const sleepStages = getSleepStages(db, date);
   const sleepWindow = getSleepWindow(db, date);
@@ -175,6 +203,10 @@ function generateDaySummary(
     hrv7dAvg,
     spo2,
     respiratoryRate,
+    vo2Max,
+    flightsClimbed,
+    basalEnergy,
+    walkingSpeed,
     weight: weightRow ? { value: weightRow.value, unit: weightRow.unit } : null,
     sleepStages,
     sleepStart: sleepWindow.sleep_start,
