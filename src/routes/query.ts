@@ -20,7 +20,7 @@ export function registerQueryRoutes(
   // GET /api/v1/health/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
   api.registerHttpRoute({
     path: '/api/v1/health/summary',
-    auth: 'none',
+    auth: 'plugin',
     match: 'exact',
     handler: async (req, res) => {
       const params = getQueryParams(req.url);
@@ -46,7 +46,7 @@ export function registerQueryRoutes(
   // GET /api/v1/health/query?metric=steps&from=YYYY-MM-DD&to=YYYY-MM-DD&aggregation=sum
   api.registerHttpRoute({
     path: '/api/v1/health/query',
-    auth: 'none',
+    auth: 'plugin',
     match: 'exact',
     handler: async (req, res) => {
       const params = getQueryParams(req.url);
@@ -74,7 +74,7 @@ export function registerQueryRoutes(
   // GET /api/v1/health/anomalies?days=14&sensitivity=medium
   api.registerHttpRoute({
     path: '/api/v1/health/anomalies',
-    auth: 'none',
+    auth: 'plugin',
     match: 'exact',
     handler: async (req, res) => {
       const params = getQueryParams(req.url);
@@ -95,7 +95,7 @@ export function registerQueryRoutes(
   // GET /api/v1/health/raw?data_type=heart_rate&from=...&to=...&limit=100
   api.registerHttpRoute({
     path: '/api/v1/health/raw',
-    auth: 'none',
+    auth: 'plugin',
     match: 'exact',
     handler: async (req, res) => {
       const params = getQueryParams(req.url);
