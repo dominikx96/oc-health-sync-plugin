@@ -3,6 +3,7 @@ import { initDatabase } from "./db/schema.js";
 import {
   registerHealthcheckRoute,
   registerIngestRoute,
+  registerQueryRoutes,
 } from "./routes/index.js";
 import { registerHealthTools } from "./tools/index.js";
 import { getStoragePath, getConfig } from "./utils/config.js";
@@ -22,6 +23,7 @@ export default definePluginEntry({
     // 3. Register HTTP routes
     registerHealthcheckRoute(api, db, config.apiKey);
     registerIngestRoute(api, db, config.apiKey);
+    registerQueryRoutes(api, db, config.summaryCacheTtlMinutes);
 
     // 4. Register agent tools
     registerHealthTools(api, db, config);

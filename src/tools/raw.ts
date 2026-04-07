@@ -4,6 +4,18 @@ import type { PluginApi } from 'openclaw/plugin-sdk/core';
 import { getSamplesInRange } from '../db/queries.js';
 import { METRIC_MAP } from '../utils/constants.js';
 
+export function executeRawQuery(
+  db: DatabaseSync,
+  params: { data_type: string; from: string; to: string; limit?: number },
+): object {
+  const { data_type, from, to, limit = 100 } = params;
+  const def = METRIC_MAP[data_type];
+  const resolvedType = def ? def.dataType : data_type;
+  const clampedLimit = Math.min(Math.max(1, limit), 500);
+  const samples = getSamplesInRange(db, resolvedType, from, to, clampedLimit);
+  return { data_type: resolvedType, from, to, count: samples.length, limit: clampedLimit, samples };
+}
+
 export function registerRawTool(
   api: PluginApi,
   db: DatabaseSync,
@@ -27,44 +39,8 @@ export function registerRawTool(
       ),
     }),
     execute(_id, params) {
-      const {
-        data_type,
-        from,
-        to,
-        limit = 100,
-      } = params as {
-        data_type: string;
-        from: string;
-        to: string;
-        limit?: number;
-      };
-
-      // Resolve short name to full HK identifier
-      const def = METRIC_MAP[data_type];
-      const resolvedType = def ? def.dataType : data_type;
-
-      const clampedLimit = Math.min(Math.max(1, limit), 500);
-      const samples = getSamplesInRange(db, resolvedType, from, to, clampedLimit);
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(
-              {
-                data_type: resolvedType,
-                from,
-                to,
-                count: samples.length,
-                limit: clampedLimit,
-                samples,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const result = executeRawQuery(db, params as { data_type: string; from: string; to: string; limit?: number });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   });
 }

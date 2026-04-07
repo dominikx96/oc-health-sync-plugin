@@ -216,6 +216,38 @@ function detectWorkoutSpike(db: DatabaseSync): Anomaly[] {
   return [];
 }
 
+export function executeAnomalyDetection(
+  db: DatabaseSync,
+  params: { days?: number; sensitivity?: string },
+): string {
+  const { days = 14, sensitivity = 'medium' } = params;
+
+  const consecutiveThreshold = sensitivity === 'high' ? 2 : sensitivity === 'low' ? 4 : 3;
+  const deviationThreshold = sensitivity === 'high' ? 5 : sensitivity === 'low' ? 15 : 10;
+  const sleepThreshold = sensitivity === 'high' ? 7.5 * 60 : sensitivity === 'low' ? 6 * 60 : 7 * 60;
+
+  const anomalies: Anomaly[] = [];
+
+  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, consecutiveThreshold));
+  anomalies.push(...detectTrend(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, consecutiveThreshold));
+  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierRestingHeartRate', 'Resting HR', 'bpm', days, deviationThreshold));
+  anomalies.push(...detectDeviation(db, 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN', 'HRV', 'ms', days, deviationThreshold));
+  anomalies.push(...detectSleepDeficit(db, sleepThreshold));
+  anomalies.push(...detectMissingData(db));
+  anomalies.push(...detectWorkoutSpike(db));
+
+  if (anomalies.length === 0) {
+    return `## Anomalies Check (last ${days} days)\n\n✅ No notable anomalies detected. All metrics within normal ranges.`;
+  }
+
+  const lines = [`## Anomalies Detected (last ${days} days)\n`];
+  for (const a of anomalies) {
+    const icon = a.severity === 'warning' ? '⚠️' : a.severity === 'info' ? 'ℹ️' : '✅';
+    lines.push(`${icon} **${a.title}**: ${a.detail}\n`);
+  }
+  return lines.join('\n');
+}
+
 export function registerAnomaliesTool(
   api: PluginApi,
   db: DatabaseSync,
@@ -240,95 +272,8 @@ export function registerAnomaliesTool(
       ),
     }),
     execute(_id, params) {
-      const { days = 14, sensitivity = 'medium' } = params as {
-        days?: number;
-        sensitivity?: string;
-      };
-
-      const consecutiveThreshold = sensitivity === 'high' ? 2 : sensitivity === 'low' ? 4 : 3;
-      const deviationThreshold = sensitivity === 'high' ? 5 : sensitivity === 'low' ? 15 : 10;
-      const sleepThreshold = sensitivity === 'high' ? 7.5 * 60 : sensitivity === 'low' ? 6 * 60 : 7 * 60;
-
-      const anomalies: Anomaly[] = [];
-
-      // HR/HRV trends
-      anomalies.push(
-        ...detectTrend(
-          db,
-          'HKQuantityTypeIdentifierRestingHeartRate',
-          'Resting HR',
-          'bpm',
-          days,
-          consecutiveThreshold,
-        ),
-      );
-      anomalies.push(
-        ...detectTrend(
-          db,
-          'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
-          'HRV',
-          'ms',
-          days,
-          consecutiveThreshold,
-        ),
-      );
-
-      // Metric deviations
-      anomalies.push(
-        ...detectDeviation(
-          db,
-          'HKQuantityTypeIdentifierRestingHeartRate',
-          'Resting HR',
-          'bpm',
-          days,
-          deviationThreshold,
-        ),
-      );
-      anomalies.push(
-        ...detectDeviation(
-          db,
-          'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
-          'HRV',
-          'ms',
-          days,
-          deviationThreshold,
-        ),
-      );
-
-      // Sleep deficit
-      anomalies.push(...detectSleepDeficit(db, sleepThreshold));
-
-      // Missing data
-      anomalies.push(...detectMissingData(db));
-
-      // Workout spike
-      anomalies.push(...detectWorkoutSpike(db));
-
-      if (anomalies.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `## Anomalies Check (last ${days} days)\n\n✅ No notable anomalies detected. All metrics within normal ranges.`,
-            },
-          ],
-        };
-      }
-
-      const lines = [`## Anomalies Detected (last ${days} days)\n`];
-      for (const a of anomalies) {
-        const icon =
-          a.severity === 'warning'
-            ? '⚠️'
-            : a.severity === 'info'
-              ? 'ℹ️'
-              : '✅';
-        lines.push(`${icon} **${a.title}**: ${a.detail}\n`);
-      }
-
-      return {
-        content: [{ type: 'text' as const, text: lines.join('\n') }],
-      };
+      const text = executeAnomalyDetection(db, params as { days?: number; sensitivity?: string });
+      return { content: [{ type: 'text' as const, text }] };
     },
   });
 }

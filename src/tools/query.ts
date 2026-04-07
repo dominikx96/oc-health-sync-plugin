@@ -21,6 +21,58 @@ function dateRange(from: string, to: string): string[] {
   return dates;
 }
 
+export function executeHealthQuery(
+  db: DatabaseSync,
+  params: { metric: string; from: string; to: string; aggregation?: string },
+): object {
+  const { metric, from, to, aggregation } = params;
+
+  // Special case: sleep_duration
+  if (metric === 'sleep_duration') {
+    const dates = dateRange(from, to);
+
+    if (aggregation === 'daily_breakdown') {
+      const days = dates.map((d) => ({
+        date: d,
+        value: Math.round(getSleepDurationForDate(db, d)),
+      }));
+      return { metric: 'sleep_duration', from, to, aggregation: 'daily_breakdown', days, unit: 'minutes' };
+    }
+
+    const totalMinutes = dates.reduce((sum, d) => sum + getSleepDurationForDate(db, d), 0);
+    const avgMinutes = dates.length > 0 ? totalMinutes / dates.length : 0;
+    const agg = aggregation ?? 'avg';
+    const value = agg === 'sum' ? totalMinutes : Math.round(avgMinutes);
+    return { metric: 'sleep_duration', from, to, aggregation: agg, value, unit: 'minutes', data_points: dates.length };
+  }
+
+  const def = METRIC_MAP[metric];
+  if (!def) {
+    return { error: `Unknown metric "${metric}". Available: ${METRIC_KEYS.join(', ')}, sleep_duration` };
+  }
+
+  const agg = aggregation ?? def.defaultAggregation;
+
+  if (agg === 'daily_breakdown') {
+    const perDayAgg = def.perDay ?? 'avg';
+    const dbAgg = perDayAgg === 'latest' ? 'max' : perDayAgg;
+    const days = getDailyBreakdown(db, def.dataType, from, to, dbAgg as 'avg' | 'sum' | 'min' | 'max');
+    return { metric, from, to, aggregation: agg, days, unit: def.unit };
+  }
+
+  if (agg !== 'avg' && agg !== 'sum' && agg !== 'min' && agg !== 'max' && agg !== 'latest') {
+    return { error: `Invalid aggregation "${agg}". Use: avg, sum, min, max, latest, daily_breakdown` };
+  }
+
+  const result = getAggregation(db, def.dataType, from, to, agg);
+  return {
+    metric, from, to, aggregation: agg,
+    value: result.value !== null ? Math.round(result.value * 10) / 10 : null,
+    unit: def.unit,
+    data_points: result.count,
+  };
+}
+
 export function registerQueryTool(
   api: PluginApi,
   db: DatabaseSync,
@@ -47,164 +99,8 @@ export function registerQueryTool(
       ),
     }),
     execute(_id, params) {
-      const { metric, from, to, aggregation } = params as {
-        metric: string;
-        from: string;
-        to: string;
-        aggregation?: string;
-      };
-
-      // Special case: sleep_duration
-      if (metric === 'sleep_duration') {
-        const dates = dateRange(from, to);
-
-        if (aggregation === 'daily_breakdown') {
-          const days = dates.map((d) => ({
-            date: d,
-            value: Math.round(getSleepDurationForDate(db, d)),
-          }));
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(
-                  {
-                    metric: 'sleep_duration',
-                    from,
-                    to,
-                    aggregation: 'daily_breakdown',
-                    days,
-                    unit: 'minutes',
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-
-        const totalMinutes = dates.reduce(
-          (sum, d) => sum + getSleepDurationForDate(db, d),
-          0,
-        );
-        const avgMinutes = dates.length > 0 ? totalMinutes / dates.length : 0;
-
-        const agg = aggregation ?? 'avg';
-        const value = agg === 'sum' ? totalMinutes : Math.round(avgMinutes);
-
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(
-                {
-                  metric: 'sleep_duration',
-                  from,
-                  to,
-                  aggregation: agg,
-                  value,
-                  unit: 'minutes',
-                  data_points: dates.length,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-
-      const def = METRIC_MAP[metric];
-      if (!def) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: `Unknown metric "${metric}". Available: ${METRIC_KEYS.join(', ')}, sleep_duration`,
-              }),
-            },
-          ],
-        };
-      }
-
-      const agg = aggregation ?? def.defaultAggregation;
-
-      if (agg === 'daily_breakdown') {
-        const perDayAgg = def.perDay ?? 'avg';
-        if (perDayAgg === 'latest') {
-          // For 'latest' per day, use max aggregation in daily breakdown
-          const days = getDailyBreakdown(db, def.dataType, from, to, 'max');
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(
-                  { metric, from, to, aggregation: agg, days, unit: def.unit },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-        const days = getDailyBreakdown(db, def.dataType, from, to, perDayAgg);
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(
-                { metric, from, to, aggregation: agg, days, unit: def.unit },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-
-      if (
-        agg !== 'avg' &&
-        agg !== 'sum' &&
-        agg !== 'min' &&
-        agg !== 'max' &&
-        agg !== 'latest'
-      ) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                error: `Invalid aggregation "${agg}". Use: avg, sum, min, max, latest, daily_breakdown`,
-              }),
-            },
-          ],
-        };
-      }
-
-      const result = getAggregation(db, def.dataType, from, to, agg);
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(
-              {
-                metric,
-                from,
-                to,
-                aggregation: agg,
-                value: result.value !== null ? Math.round(result.value * 10) / 10 : null,
-                unit: def.unit,
-                data_points: result.count,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const result = executeHealthQuery(db, params as { metric: string; from: string; to: string; aggregation?: string });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   });
 }
