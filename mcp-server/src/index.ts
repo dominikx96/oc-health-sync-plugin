@@ -118,7 +118,10 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
   };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('index.js')) {
+// CLI entry: trigger for both built (`node dist/index.js`) and dev (`tsx src/index.ts`)
+// invocations. Tests import startServer directly and have a different argv[1].
+const entryArg = process.argv[1] ?? '';
+if (entryArg.endsWith('index.js') || entryArg.endsWith('index.ts')) {
   const port = Number(process.env.MCP_PORT ?? 3737);
   startServer(port).then((h) => {
     console.log(`mcp-server listening on http://127.0.0.1:${h.port}/mcp`);

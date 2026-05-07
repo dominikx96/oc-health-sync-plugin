@@ -193,7 +193,7 @@ A single Deno function at `supabase/functions/ingest/index.ts`:
   4. Soft-delete `deleted_ids`: `UPDATE health_samples SET deleted_at = now() WHERE uuid = ANY($1)`.
   5. Mark affected `summary_cache` rows as invalidated for the date range touched by the payload.
   6. Update `device_state` (`last_synced_at`, anchor, metadata).
-  7. Return `{ stored: <count>, deleted: <count> }`.
+  7. Return `{ received: <count>, deleted: <count> }`.
 - **Response codes:** 200 ok, 401 unauthorized, 400 validation error, 500 server.
 - **Connects to Postgres** directly via `postgres-js` (Deno-compatible) using a connection string scoped to `health_ingest_role`. Avoids the Supabase JS client / PostgREST round-trip; the function is the only writer to the data tables and benefits from being able to issue raw SQL with `ON CONFLICT` and `= ANY($1)` clauses.
 
@@ -247,7 +247,7 @@ No Supabase Auth/GoTrue. No user accounts. RLS not used (single-user; the Edge F
 2. iOS POSTs to `http://<tailnet-ip>:<kong-port>/functions/v1/ingest` over Tailscale with `Authorization: Bearer $INGEST_API_KEY`.
 3. Kong routes the request to the `ingest` Edge Function.
 4. Edge Function validates auth, validates body, upserts samples, soft-deletes, invalidates cache, updates device state.
-5. Edge Function returns `{ stored, deleted }`.
+5. Edge Function returns `{ received, deleted }`.
 6. iOS persists the new sync anchor.
 
 **Query (via MCP):**
