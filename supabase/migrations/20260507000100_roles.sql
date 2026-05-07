@@ -1,8 +1,16 @@
 -- Two non-login roles. Login is granted to per-environment users
--- (via deploy/.env) which inherit from these.
+-- (via deploy/.env) which inherit from these. Idempotent so the
+-- migration is safe to replay against an existing cluster.
 
-CREATE ROLE health_ingest_role NOLOGIN;
-CREATE ROLE health_read_role   NOLOGIN;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'health_ingest_role') THEN
+    CREATE ROLE health_ingest_role NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'health_read_role') THEN
+    CREATE ROLE health_read_role NOLOGIN;
+  END IF;
+END $$;
 
 -- Ingest role: writes to data tables, can flip cache invalidated flag.
 GRANT INSERT, UPDATE ON health_samples TO health_ingest_role;
