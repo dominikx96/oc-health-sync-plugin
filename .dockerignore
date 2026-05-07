@@ -1,0 +1,40 @@
+# Repo-root .dockerignore for the mcp-server image build.
+# Build context is the repo root so we can COPY supabase/... into the image.
+# This file aggressively trims the context to what the Dockerfile actually needs:
+#   - mcp-server/  (sources, package files, scripts/)
+#   - supabase/migrations/
+#   - supabase/functions/ingest/
+
+# Top-level noise
+.git
+.github
+.gitignore
+.claude
+.vscode
+README.md
+docs
+agent_example
+skill_example
+_legacy
+node_modules
+
+# Per-subproject noise that should not be in the build context
+mcp-server/node_modules
+mcp-server/dist
+mcp-server/.env
+mcp-server/.dockerignore
+mcp-server/__tests__
+mcp-server/*.log
+
+# supabase: keep only migrations/ and functions/ingest/
+supabase/.branches
+supabase/.temp
+supabase/config.toml
+supabase/seed.sql
+supabase/snippets
+supabase/tests
+supabase/functions/_shared
+supabase/functions/*/node_modules
+
+# everything in deploy/ is operator-side — never inside the image
+deploy

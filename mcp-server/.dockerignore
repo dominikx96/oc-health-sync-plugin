@@ -1,6 +1,0 @@
-node_modules
-dist
-*.log
-.env
-__tests__
-src/**/*.test.ts
