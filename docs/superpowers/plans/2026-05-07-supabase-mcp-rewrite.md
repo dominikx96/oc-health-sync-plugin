@@ -156,12 +156,12 @@ git commit -m "chore: init supabase project"
     "@modelcontextprotocol/express": "*",
     "@modelcontextprotocol/node": "*",
     "@modelcontextprotocol/server": "*",
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "pg": "^8.13.0",
-    "zod": "^3.23.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.0",
@@ -179,8 +179,8 @@ After saving, replace the `*` for each `@modelcontextprotocol/*` dep with the la
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": ["ES2023"],
     "outDir": "dist",
     "rootDir": "src",
@@ -188,13 +188,14 @@ After saving, replace the `*` for each `@modelcontextprotocol/*` dep with the la
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "declaration": false,
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
 }
 ```
+
+`NodeNext` is the right choice here: this package emits to `dist/` and runs directly with `node dist/index.js` (no bundler), so module resolution must follow Node's ESM rules — including explicit `.js` extensions on relative imports. Use `'./foo.js'` even when importing from `./foo.ts`; TypeScript resolves the source during compilation.
 
 - [ ] **Step 3: Create `mcp-server/vitest.config.ts`**
 
@@ -1729,7 +1730,7 @@ The MCP server lives at `mcp-server/`. Tests use Vitest with the local Supabase 
 ```typescript
 // mcp-server/src/db.test.ts
 import { describe, it, expect, afterAll } from 'vitest';
-import { createPool } from './db.ts';
+import { createPool } from './db.js';
 
 const DSN = process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
 const pool = createPool(DSN);
@@ -1762,7 +1763,7 @@ npm test -- db.test.ts
 cd ..
 ```
 
-Expected: `Cannot find module './db.ts'`.
+Expected: `Cannot find module './db.js'`.
 
 - [ ] **Step 3: Implement `db.ts`**
 
@@ -1812,7 +1813,7 @@ git commit -m "feat(mcp): add pg pool module"
 // mcp-server/src/auth.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import express from 'express';
-import { bearerAuth } from './auth.ts';
+import { bearerAuth } from './auth.js';
 
 describe('bearerAuth middleware', () => {
   beforeEach(() => { process.env.MCP_API_KEY = 'mcp-secret'; });
@@ -1860,7 +1861,7 @@ npm test -- auth.test.ts
 cd ..
 ```
 
-Expected: `Cannot find module './auth.ts'`.
+Expected: `Cannot find module './auth.js'`.
 
 - [ ] **Step 3: Implement `auth.ts`**
 
@@ -1923,8 +1924,8 @@ We do this before `health_summary` because it's strictly simpler.
 ```typescript
 // mcp-server/src/tools/health-anomalies.test.ts
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { createPool } from '../db.ts';
-import { healthAnomalies } from './health-anomalies.ts';
+import { createPool } from '../db.js';
+import { healthAnomalies } from './health-anomalies.js';
 
 const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
@@ -1974,13 +1975,13 @@ npm test -- health-anomalies.test.ts
 cd ..
 ```
 
-Expected: `Cannot find module './health-anomalies.ts'`.
+Expected: `Cannot find module './health-anomalies.js'`.
 
 - [ ] **Step 3: Implement the tool**
 
 ```typescript
 // mcp-server/src/tools/health-anomalies.ts
-import type { Pool } from '../db.ts';
+import type { Pool } from '../db.js';
 
 export interface HealthAnomaliesInput {
   window_days?: number;
@@ -2047,8 +2048,8 @@ git commit -m "feat(mcp): add health_anomalies tool"
 ```typescript
 // mcp-server/src/tools/run-sql.test.ts
 import { describe, it, expect, afterAll } from 'vitest';
-import { createPool } from '../db.ts';
-import { runSql } from './run-sql.ts';
+import { createPool } from '../db.js';
+import { runSql } from './run-sql.js';
 
 const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
@@ -2087,7 +2088,7 @@ npm test -- run-sql.test.ts
 cd ..
 ```
 
-Expected: `Cannot find module './run-sql.ts'`.
+Expected: `Cannot find module './run-sql.js'`.
 
 - [ ] **Step 3: Implement the tool**
 
@@ -2095,7 +2096,7 @@ Expected: `Cannot find module './run-sql.ts'`.
 
 ```typescript
 // mcp-server/src/tools/run-sql.ts
-import type { Pool } from '../db.ts';
+import type { Pool } from '../db.js';
 
 export interface RunSqlInput {
   query: string;
@@ -2179,8 +2180,8 @@ Note the structure of the daily/weekly/monthly markdown blocks. Port the look-an
 ```typescript
 // mcp-server/src/tools/health-summary.test.ts
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { createPool } from '../db.ts';
-import { healthSummary } from './health-summary.ts';
+import { createPool } from '../db.js';
+import { healthSummary } from './health-summary.js';
 
 const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
@@ -2244,7 +2245,7 @@ npm test -- health-summary.test.ts
 cd ..
 ```
 
-Expected: `Cannot find module './health-summary.ts'`.
+Expected: `Cannot find module './health-summary.js'`.
 
 - [ ] **Step 4: Implement `templates.ts`**
 
@@ -2317,8 +2318,8 @@ export function renderMonthly(monthStart: string, row: DailyRow | undefined): st
 
 ```typescript
 // mcp-server/src/tools/health-summary.ts
-import type { Pool } from '../db.ts';
-import { renderDaily, renderWeekly, renderMonthly, type DailyRow } from './templates.ts';
+import type { Pool } from '../db.js';
+import { renderDaily, renderWeekly, renderMonthly, type DailyRow } from './templates.js';
 
 export type Period = 'day' | 'week' | 'month';
 
@@ -2440,8 +2441,8 @@ git commit -m "feat(mcp): add health_summary tool with cache"
 ```typescript
 // mcp-server/src/resources/schema.test.ts
 import { describe, it, expect, afterAll } from 'vitest';
-import { createPool } from '../db.ts';
-import { describeSchema } from './schema.ts';
+import { createPool } from '../db.js';
+import { describeSchema } from './schema.js';
 
 const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
@@ -2471,7 +2472,7 @@ cd ..
 
 ```typescript
 // mcp-server/src/resources/schema.ts
-import type { Pool } from '../db.ts';
+import type { Pool } from '../db.js';
 
 interface ColumnRow { table_name: string; column_name: string; data_type: string; }
 
@@ -2567,7 +2568,7 @@ The MCP TS SDK package layout (verified via context7):
 ```typescript
 // mcp-server/src/index.test.ts
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startServer } from './index.ts';
+import { startServer } from './index.js';
 
 describe('mcp server end-to-end', () => {
   let close: () => Promise<void>;
@@ -2650,12 +2651,12 @@ import { createMcpExpressApp } from '@modelcontextprotocol/express';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { z } from 'zod';
 
-import { bearerAuth } from './auth.ts';
-import { createPool, type Pool } from './db.ts';
-import { healthSummary } from './tools/health-summary.ts';
-import { healthAnomalies } from './tools/health-anomalies.ts';
-import { runSql } from './tools/run-sql.ts';
-import { describeSchema } from './resources/schema.ts';
+import { bearerAuth } from './auth.js';
+import { createPool, type Pool } from './db.js';
+import { healthSummary } from './tools/health-summary.js';
+import { healthAnomalies } from './tools/health-anomalies.js';
+import { runSql } from './tools/run-sql.js';
+import { describeSchema } from './resources/schema.js';
 
 function buildMcp(pool: Pool): McpServer {
   const server = new McpServer({ name: 'oc-health-sync', version: '0.1.0' });
