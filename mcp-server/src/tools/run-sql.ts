@@ -22,7 +22,10 @@ export async function runSql(pool: Pool, input: RunSqlInput): Promise<RunSqlResu
 
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    // Defense in depth: read-only at the transaction layer AND role grants.
+    // Either alone is sufficient; keeping both means a misconfigured role
+    // wouldn't silently allow writes through this tool.
+    await client.query('BEGIN READ ONLY');
     await client.query(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
     try {
       const r = await client.query(trimmed);

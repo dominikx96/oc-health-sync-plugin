@@ -19,10 +19,13 @@ describe('runSql', () => {
     await expect(runSql(pool, { query: 'SELECT * FROM nonexistent_table' })).rejects.toThrow(/does not exist/);
   });
 
-  it('blocks writes against health_samples (role is read-only)', async () => {
+  it('blocks writes against health_samples (transaction read-only OR role-grant)', async () => {
+    // BEGIN READ ONLY fires "cannot execute INSERT in a read-only transaction" before
+    // role grants are checked, so the error message we see depends on which layer
+    // catches the write first. Either is an acceptable signal that writes are blocked.
     await expect(runSql(pool, {
       query: "INSERT INTO health_samples (uuid, sample_kind, data_type, start_date, end_date) VALUES ('x', 'quantity', 'y', now(), now())"
-    })).rejects.toThrow(/permission denied/);
+    })).rejects.toThrow(/permission denied|read-only transaction/i);
   });
 
   it('aborts on a slow query (statement timeout)', async () => {
