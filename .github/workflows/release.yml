@@ -1,0 +1,151 @@
+name: release
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # for gh release create
+  packages: write   # for ghcr push
+
+jobs:
+  test-and-publish:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGURL_SUPER: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: mcp-server/package-lock.json
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install MCP server deps
+        working-directory: mcp-server
+        run: npm ci
+
+      - name: Typecheck MCP server
+        working-directory: mcp-server
+        run: npm run typecheck
+
+      - name: Apply migrations to test postgres
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "→ $f"
+            psql "$PGURL_SUPER" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Apply seed.sql (creates test users ingest_user / read_user)
+        run: psql "$PGURL_SUPER" -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
+      - name: Run SQL schema tests
+        run: |
+          for t in supabase/tests/*.test.sql; do
+            echo "→ $t"
+            psql "$PGURL_SUPER" -v ON_ERROR_STOP=1 -f "$t"
+          done
+
+      - name: Run vitest (mcp-server)
+        working-directory: mcp-server
+        env:
+          MCP_DATABASE_URL: postgresql://read_user:read_pw@127.0.0.1:5432/postgres
+        run: npm test
+
+      - name: Run deno tests (ingest edge function)
+        working-directory: supabase/functions/ingest
+        env:
+          INGEST_DATABASE_URL: postgresql://ingest_user:ingest_pw@127.0.0.1:5432/postgres
+          INGEST_API_KEY: ci-ingest-key
+        run: deno test --allow-env --allow-net --allow-read
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/oc-health-sync-plugin/mcp-server"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            SHORT="${GITHUB_SHA:0:7}"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "tags=${IMAGE}:edge,${IMAGE}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: mcp-server/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Assemble release tarball
+        if: steps.tags.outputs.is_release == 'true'
+        run: |
+          VER="${{ steps.tags.outputs.version }}"
+          DIR="oc-health-sync-${VER}"
+          mkdir -p "${DIR}"
+          cp deploy/install.sh \
+             deploy/upgrade.sh \
+             deploy/docker-compose.mcp.yml \
+             deploy/init-users.sh \
+             deploy/.env.example \
+             deploy/smoke.sh \
+             deploy/README.md \
+             "${DIR}/"
+          echo "${VER}" > "${DIR}/VERSION"
+          tar czf "${DIR}.tar.gz" "${DIR}"
+          ls -l "${DIR}.tar.gz"
+
+      - name: Create GitHub release with tarball
+        if: steps.tags.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.tags.outputs.version }}"
+          gh release create "${VER}" "oc-health-sync-${VER}.tar.gz" \
+            --title "${VER}" \
+            --notes "Automated release. See spec at docs/superpowers/specs/2026-05-07-vps-deploy-versioning-design.md."
