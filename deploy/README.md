@@ -9,7 +9,6 @@ The stack is Tailscale-isolated (no public inbound ports) and layers our compose
 - A Linux VPS with a public IP (Ubuntu 22.04+ recommended).
 - **Docker** — `curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER` (log out and back in after).
 - **Tailscale** — `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up`.
-- **`postgresql-client`** — `init-users.sh` runs `psql` from the host: `sudo apt-get install -y postgresql-client`.
 - **`rsync`** — used to overlay each new tarball onto `~/oc-health-sync/`: `sudo apt-get install -y rsync`.
 - **`gh` CLI** — needed to download the private release tarball:
   ```
