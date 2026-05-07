@@ -30,7 +30,7 @@ EOF
   exit 2
 }
 
-[[ $# -ge 1 ]] || usage
+[[ $# -eq 1 ]] || usage
 
 if [[ "$1" == "--rollback" ]]; then
   [[ -s .last-version.bak ]] || { echo "FATAL: .last-version.bak is missing or empty — nothing to roll back to." >&2; exit 2; }
@@ -68,6 +68,8 @@ TS="$(date +%Y%m%d-%H%M%S)"
 SNAP="${BACKUP_DIR}/pre-upgrade-${TS}.sql.gz"
 echo "→ Snapshotting DB to ${SNAP}"
 docker exec supabase-db pg_dump -U postgres postgres | gzip > "${SNAP}"
+[[ -s "${SNAP}" ]] || { echo "FATAL: snapshot is empty: ${SNAP}" >&2; exit 1; }
+gunzip -t "${SNAP}" || { echo "FATAL: snapshot is corrupt: ${SNAP}" >&2; exit 1; }
 
 # 2. Stash current version.
 CURRENT="$(cat .last-version)"
@@ -101,7 +103,10 @@ trap - EXIT
 
 # 6. Restart.
 echo "→ Restarting mcp + functions"
-dc up -d mcp functions
+# functions has no image bump (we only swapped host volume contents above), so
+# force-recreate it to pick up the new edge function source. mcp does have an
+# image bump and gets recreated naturally.
+dc up -d --force-recreate mcp functions
 
 # 7. Smoke.
 echo "→ Smoke test"
