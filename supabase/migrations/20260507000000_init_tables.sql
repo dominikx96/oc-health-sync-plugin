@@ -32,9 +32,9 @@ CREATE TABLE device_state (
 );
 
 -- Cache of rendered markdown summaries.
--- cache_key formats:
---   daily:YYYY-MM-DD:<tz>
---   weekly:YYYY-Www:<tz>
+-- cache_key formats (all dates ISO-8601 YYYY-MM-DD):
+--   daily:<date>:<tz>
+--   weekly:<monday-of-week>:<tz>
 --   monthly:YYYY-MM:<tz>
 CREATE TABLE summary_cache (
   cache_key    TEXT PRIMARY KEY,
