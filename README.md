@@ -1,374 +1,76 @@
-# oc-health-sync — OpenClaw Plugin
+# oc-health-sync
 
-Receives Apple HealthKit data from the [oc-health-sync iOS app](../), stores it in a local SQLite database, and exposes agent tools for querying and summarizing health data. **All data stays on the machine running OpenClaw** — nothing leaves your network.
+Self-hosted Supabase + MCP server for ingesting Apple HealthKit data and exposing it to MCP-compatible clients (Claude Desktop, Hermes, Cursor, etc.). Runs on a single VPS, isolated to a Tailscale tailnet.
 
-Uses Node's built-in `node:sqlite` module — **no native bindings**, no build toolchain needed, no post-install steps.
+- **Ingest:** the iOS app POSTs HealthKit samples to a Supabase Edge Function over Tailscale.
+- **Query:** any MCP client connects to the MCP server (over Tailscale) to call `health_summary`, `health_anomalies`, or `run_sql`, and to read the `schema://tables` resource.
+- **No public exposure** — everything is tailnet-only.
 
----
+## Layout
 
-## Before you install
+- `supabase/` — SQL migrations, the `ingest` Edge Function, seed data.
+- `mcp-server/` — Node 24 + TypeScript MCP server (`@modelcontextprotocol/sdk`).
+- `deploy/` — `docker-compose.mcp.yml`, `.env.example`, deploy guide, smoke test.
 
-You need all of the following on the **server** that will run the plugin (this can be your laptop, a home server, or a VPS):
+## Deploying
 
-| Requirement | Why | How to get it |
-|---|---|---|
-| **OpenClaw** ≥ `2026.2.0` with the gateway running | The plugin is hosted inside OpenClaw's gateway process. | `npm install -g openclaw@latest` then `openclaw gateway start` |
-| **Node.js 24+** | Required for the stable built-in `node:sqlite` module. | [nodejs.org](https://nodejs.org) or `nvm install 24` |
-| **The oc-health-sync iOS app** | The plugin is the receiver — it needs data from the iOS app. | [Repo / TestFlight link](../) |
-
-If the server is a **remote VPS**, you also need a private tunnel from your iPhone to the gateway (it only binds to `localhost`). See [Connecting from a remote server](#connecting-from-a-remote-server) below — Tailscale is the recommended route.
-
----
-
-## Install
-
-> The plugin is currently pre-1.0 and published under the `next` dist-tag. Use `@next` explicitly until a stable `latest` is promoted.
-
-### 1. Install the package
-
-```bash
-openclaw plugins install @oc-health-sync/openclaw-plugin@next
-```
-
-### 2. Restart the gateway + grab the API key
-
-```bash
-openclaw gateway restart
-openclaw gateway logs 2>&1 | grep "health-sync"
-```
-
-### 3. Connect the iOS app
-
-- **Server URL:** `http://127.0.0.1:18789` (local) or `http://<tailscale-ip>:18789` (remote)
-- **API key:** paste the key from the logs
-- Tap **Test Connection**.
-
-That's it — the app will start uploading samples on its next sync.
-
-### Install from source
-
-```bash
-git clone https://github.com/dominikx96/oc-health-sync-plugin.git
-cd oc-health-sync-plugin
-npm install
-npm run build
-openclaw plugins install .
-openclaw gateway restart
-```
-
----
-
-## Features
-
-- **Ingest endpoint** — receives health samples from the iOS app via `POST /api/v1/health/ingest`
-- **Health check** — `GET /api/v1/health` for connection testing
-- **Agent tools** — 6 tools the OpenClaw agent uses to answer health questions:
-  - `health_summary` — daily/weekly/monthly markdown summaries
-  - `health_query` — specific metric queries with aggregation
-  - `health_anomalies` — trend detection (HRV decline, sleep deficit, etc.)
-  - `health_raw` — raw sample access
-  - `health_compare` — side-by-side period comparison
-  - `health_completeness` — data coverage and gap detection
-- **Auto-generated API key** — zero-config install, key generated on first run
-- **Summary caching** — repeat queries are fast, cache invalidates when new data arrives
-- **Zero native dependencies** — uses Node's built-in `node:sqlite`, works with OpenClaw's `--ignore-scripts` install
-
----
-
-## Connecting from a remote server
-
-The OpenClaw gateway only listens on `localhost`, so the iOS app can't reach it directly over the network. [Tailscale](https://tailscale.com) creates an encrypted WireGuard tunnel between your devices and proxies the localhost service to your private network. No port forwarding, no firewall changes, works from anywhere.
-
-### 1. Install Tailscale
-
-**On your VPS (Ubuntu/Debian):**
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-```
-
-**On a macOS server:** install from the [Mac App Store](https://apps.apple.com/app/tailscale/id1475387142) or `brew install tailscale`, then sign in.
-
-**On your iPhone:** install from the [App Store](https://apps.apple.com/app/tailscale/id1470499037) and sign in with the same Tailscale account.
-
-Verify both devices see each other:
-
-```bash
-tailscale status
-```
-
-### 2. Expose the gateway to your tailnet
-
-Run this on the machine where OpenClaw is running. It makes `localhost:18789` reachable from your other Tailscale devices — and **only** from them (not the public internet):
-
-```bash
-tailscale serve --bg --tcp 18789 18789
-tailscale serve status
-```
-
-The `--bg` flag persists the configuration across reboots. On a VPS, Tailscale runs as a systemd service, so this works unattended. On macOS, Tailscale must be running (add it to Login Items). To stop serving later: `tailscale serve --tcp=18789 off`.
-
-### 3. Point the iOS app at the tailnet IP
-
-```bash
-tailscale ip -4
-# e.g. 100.64.1.42
-```
-
-In the iOS app, set the server URL to `http://<tailscale-ip>:18789`, paste your API key, and tap **Test Connection**.
-
-> **Security:** all traffic is encrypted end-to-end by Tailscale's WireGuard tunnel. `tailscale serve` exposes the port **only** to your private tailnet. Do **not** use `tailscale funnel`, which would expose it to the public internet.
-
----
-
-## Setting up a Health Coach agent
-
-The plugin provides tools and a skill — you still need an agent to talk to. Pick one of the options below.
-
-### Option A: Add the skill to your default agent (fastest)
-
-```bash
-openclaw agents set-skill --agent default --add health-sync
-```
-
-Done. Your default agent can now answer health questions. Try it:
-
-```bash
-openclaw agent -m "How was my sleep last night?"
-```
-
-### Option B: Create a dedicated Health Coach agent
-
-Create a new agent with a health-analyst persona. Run these commands:
-
-```bash
-openclaw agents add health-coach --non-interactive
-openclaw agents set-skill --agent health-coach --add health-sync
-```
-
-Then set its identity — copy the block below into `~/.openclaw/agents/health-coach/IDENTITY.md`:
-
-```markdown
----
-name: Health Analyst
-emoji: "\U0001F4CA"
-theme: dark
----
-
-# Role
-
-You are a personal health data analyst. You have access to the user's Apple
-HealthKit data (heart rate, HRV, sleep, steps, workouts, weight, SpO2,
-respiratory rate) synced from their iPhone and Apple Watch.
-
-# Behavior
-
-- Lead with the most relevant finding, not a data dump
-- Compare current values to recent trends (7-day and 30-day averages)
-- Flag anomalies proactively even when not asked
-- Use exact numbers with units — "6h 42m sleep", "72 bpm resting HR", "8,431 steps"
-- When data is missing or sparse, say so directly
-- Keep responses concise — one clear insight per paragraph
-- Never diagnose, prescribe, or give medical advice — report what the data shows
-
-# Anti-patterns
-
-- Do not speculate about causes without data to support it
-- Do not use filler phrases like "Let me check that for you"
-- Do not repeat back the user's question before answering
-- Do not add disclaimers to every response — one mention that you're not a doctor is enough per conversation
-```
-
-Point the agent at the identity file and start chatting:
-
-```bash
-openclaw agents set-identity --agent health-coach --from-identity
-openclaw agent --agent health-coach -m "How was my health this week?"
-```
-
-Or use the interactive terminal:
-
-```bash
-openclaw tui
-```
-
----
-
-## Manual configuration (optional)
-
-The plugin runs with zero config. If you want to override defaults, add this to `~/.openclaw/config.yaml`:
-
-```yaml
-plugins:
-  entries:
-    health-sync:
-      enabled: true
-      config:
-        apiKey: "your-custom-key-here"          # optional, auto-generated if omitted
-        storagePath: "~/.openclaw/state/health-sync/health.sqlite"  # default
-        summaryCacheTtlMinutes: 60              # default
-```
-
----
-
-## Troubleshooting
-
-**No API key shows in the logs**
-The key is printed once on first load. Restart the gateway: `openclaw gateway restart && openclaw gateway logs 2>&1 | grep "health-sync"`. Or set `apiKey` explicitly in `config.yaml` (see above).
-
-**iOS app says "Test Connection failed"**
-1. From the server, confirm the gateway is reachable: `curl -s http://127.0.0.1:18789/api/v1/health -H "Authorization: Bearer $API_KEY"` should return 200.
-2. If the server is remote: `tailscale serve status` must show port 18789 exposed, and the iPhone must be signed into the **same** tailnet.
-3. Double-check the URL in the app uses `http://` (not `https://`) and includes the port.
-
-**Ingest succeeds but no data in queries**
-Confirm rows landed in SQLite:
-```bash
-sqlite3 ~/.openclaw/state/health-sync/health.sqlite \
-  "SELECT data_type, COUNT(*) FROM health_samples WHERE deleted_at IS NULL GROUP BY data_type;"
-```
-If empty, check the ingest logs for schema/validation errors.
-
-**Plugin fails to load with "Cannot find module 'node:sqlite'"**
-You need Node 24+. Check your version: `node --version`. Update via `nvm install 24` or [nodejs.org](https://nodejs.org).
-
----
+See [`deploy/README.md`](./deploy/README.md).
 
 ## Development
 
-### Prerequisites
-
-- Node.js 24+
-- OpenClaw installed (`npm install -g openclaw@latest`)
-- OpenClaw gateway running (`openclaw gateway start`)
-
-### First-time setup
-
 ```bash
-npm install
-./scripts/dev-setup.sh
-```
+# 1. Bring up local Supabase (Postgres + Studio + Edge Functions runtime)
+cd supabase && supabase start
 
-This builds the plugin, symlinks it into OpenClaw (no copying), and restarts the gateway.
+# 2. Apply migrations and seed
+supabase db reset
 
-### Dev workflow
+# 3. Create a local env file for the Edge Function
+#    (the function runs in a container, so use host.docker.internal not 127.0.0.1)
+cat > supabase/functions/ingest/.env <<'EOF'
+INGEST_API_KEY=test-ingest-key
+INGEST_DATABASE_URL=postgresql://ingest_user:ingest_pw@host.docker.internal:54422/postgres
+EOF
 
-Run TypeScript in watch mode — the gateway auto-reloads when `dist/` changes:
+# 4. Run the Edge Function locally
+supabase functions serve ingest --no-verify-jwt \
+  --env-file ./supabase/functions/ingest/.env
 
-```bash
+# 5. In another terminal, run the MCP server
+cd mcp-server
+MCP_API_KEY=mcp-test-key \
+MCP_DATABASE_URL='postgresql://read_user:read_pw@127.0.0.1:54422/postgres' \
 npm run dev
 ```
 
-Save a `.ts` file → `tsc` recompiles → gateway hot-reloads. No manual steps.
+See [`supabase/functions/ingest/README.md`](./supabase/functions/ingest/README.md) for more detail on the Edge Function local setup.
 
-If hot reload misses a change:
+Tests:
 
-```bash
-./scripts/dev-reload.sh
-```
-
-### Testing with curl
+The handler and MCP tool tests hit the local Postgres directly and assume a clean database state. Always run `supabase db reset` first:
 
 ```bash
-API_KEY="<key-from-logs>"
+# Refresh DB (applies migrations + seed.sql)
+cd supabase && supabase db reset && cd ..
 
-# Health check
-curl -s http://127.0.0.1:18789/api/v1/health \
-  -H "Authorization: Bearer $API_KEY"
+# Schema tests
+for t in supabase/tests/*.test.sql; do
+  psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' -f "$t" || exit 1
+done
 
-# Send a test sample
-curl -s http://127.0.0.1:18789/api/v1/health/ingest \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_id": "test-device",
-    "new_samples": [{
-      "uuid": "test-001",
-      "sample_kind": "quantity",
-      "data_type": "HKQuantityTypeIdentifierStepCount",
-      "value": 8432,
-      "unit": "count",
-      "start_date": "2026-04-03T10:00:00Z",
-      "end_date": "2026-04-03T10:00:00Z",
-      "source_name": "iPhone"
-    }],
-    "deleted_ids": []
-  }'
+# Edge Function tests
+cd supabase/functions/ingest && deno test --allow-env --allow-net --allow-read
+
+# MCP server tests
+cd mcp-server && npm test
 ```
 
-### Checking logs
+## Dependencies note
 
-```bash
-openclaw gateway logs 2>&1 | grep "health-sync"
-```
+The MCP server pins `@modelcontextprotocol/{server,express,node}` at `2.0.0-alpha.2`. These are pre-release packages on an unstable API surface; the pin is intentional to avoid drift. Plan to migrate to the stable SDK release once it ships.
 
-Ingest logs show sample counts and type breakdowns:
+## MCP client identity prompt
 
-```
-[health-sync] 📥 Ingest request from device A1B2C3: 142 samples, 0 deletes
-[health-sync] ✅ Stored 142 samples, soft-deleted 0 | Dates: 2026-04-02, 2026-04-03 | HeartRate: 87, StepCount: 34
-```
+For best results, your MCP client should be configured with a "Health Analyst" persona. Suggested identity:
 
-### Releasing to npm
-
-See [RELEASING.md](./RELEASING.md) for the full publish flow (pre-publish checks, `next` vs `latest` tags, rollback).
-
----
-
-## Project Structure
-
-```
-src/
-├── index.ts                    # Plugin entry point
-├── db/
-│   ├── connection.ts           # SQLite connection (node:sqlite) + WAL mode
-│   ├── schema.ts               # 3 tables + indexes
-│   └── queries.ts              # Typed query helpers
-├── routes/
-│   ├── healthcheck.ts          # GET /api/v1/health
-│   └── ingest.ts               # POST /api/v1/health/ingest
-├── tools/
-│   ├── summary.ts              # health_summary tool
-│   ├── query.ts                # health_query tool
-│   ├── anomalies.ts            # health_anomalies tool
-│   └── raw.ts                  # health_raw tool
-├── summary/
-│   ├── generator.ts            # SQL → markdown with caching
-│   └── templates.ts            # Markdown rendering
-└── utils/
-    ├── auth.ts                 # API key validation
-    ├── http.ts                 # JSON body parsing
-    ├── config.ts               # Config resolution + auto-gen key
-    └── constants.ts            # Sleep stages, workout names, metrics
-skills/health/SKILL.md          # Agent skill instructions
-```
-
-## How It Works
-
-```
-iOS App                          OpenClaw Plugin
-────────                         ───────────────
-POST /api/v1/health/ingest  ──────────► HTTP Route Handler
-                                      │
-                                      ▼
-                                 SQLite DB (node:sqlite, WAL mode)
-                                      │
-Agent asks                            ▼
-"How was my sleep?"              Summary Generator
-      │                               │
-      ▼                               ▼
-health_summary tool  ◄────────  Markdown Summary (cached)
-      │
-      ▼
-Agent responds with
-compact, accurate answer
-```
-
-## Security
-
-- API key validated on every request (timing-safe comparison)
-- No outbound network requests — data stays local
-- No native dependencies — pure JS/TS plugin, safe with OpenClaw's `--ignore-scripts`
-- SQLite WAL mode for concurrent reads during writes
-- Soft-delete semantics — no data permanently lost
+> You are a personal health data analyst. You have access to the user's Apple HealthKit data via the `oc-health-sync` MCP server. Lead with the most relevant finding. Compare current values to recent trends. Flag anomalies proactively. Use exact numbers with units. Never diagnose or prescribe — report what the data shows.

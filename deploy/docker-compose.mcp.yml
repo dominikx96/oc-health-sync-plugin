@@ -1,0 +1,29 @@
+# Overlay: combine with supabase/docker/docker-compose.yml from the upstream repo:
+#   docker compose -f /path/to/supabase/docker/docker-compose.yml -f docker-compose.mcp.yml up -d
+#
+# This file intentionally does NOT redefine db / kong / functions / studio — those
+# come from the upstream compose. We only:
+#   - inject INGEST_API_KEY and INGEST_DATABASE_URL into the functions container
+#   - add our mcp-server service on the same network
+
+name: oc-health-sync
+
+services:
+  functions:
+    environment:
+      INGEST_API_KEY: ${INGEST_API_KEY}
+      INGEST_DATABASE_URL: ${INGEST_DATABASE_URL}
+
+  mcp:
+    build:
+      context: ../mcp-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      MCP_API_KEY: ${MCP_API_KEY}
+      MCP_PORT: ${MCP_PORT}
+      MCP_DATABASE_URL: ${MCP_DATABASE_URL}
+    ports:
+      - "127.0.0.1:${MCP_PORT}:${MCP_PORT}"
+    depends_on:
+      - db
