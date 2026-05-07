@@ -18,6 +18,10 @@ skill_example
 _legacy
 node_modules
 
+# Never bake any local .env file into the image, anywhere in the tree.
+**/.env
+**/.env.*
+
 # Per-subproject noise that should not be in the build context
 mcp-server/node_modules
 mcp-server/dist
