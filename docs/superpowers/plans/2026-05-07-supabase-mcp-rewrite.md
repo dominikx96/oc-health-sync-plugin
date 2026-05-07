@@ -1000,7 +1000,7 @@ git commit -m "feat(db): add detect_anomalies function"
 
 ## Phase 2 — Ingest Edge Function
 
-The Edge Function lives at `supabase/functions/ingest/`. It validates a bearer token, validates the body, performs all writes against Postgres as `health_ingest_role`, and returns `{ stored, deleted }`. Tests run with `deno test` against the local Supabase Postgres.
+The Edge Function lives at `supabase/functions/ingest/`. It validates a bearer token, validates the body, performs all writes against Postgres as `health_ingest_role`, and returns `{ received, deleted }`. Tests run with `deno test` against the local Supabase Postgres.
 
 The function decomposes into:
 - `auth.ts` — bearer comparison.
@@ -1347,7 +1347,7 @@ Deno.test('inserts new samples', async () => {
       }],
       deleted_ids: []
     });
-    assertEquals(result.stored, 1);
+    assertEquals(result.received, 1);
     assertEquals(result.deleted, 0);
 
     const rows = await sql`SELECT count(*)::int AS n FROM health_samples`;
@@ -1476,14 +1476,14 @@ import type { Sql } from './db.ts';
 import type { IngestPayload, Sample } from './schema.ts';
 
 export interface IngestResult {
-  stored:  number;
+  received: number;
   deleted: number;
 }
 
 export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<IngestResult> {
   const { device_id, new_samples, deleted_ids } = payload;
 
-  let stored = 0;
+  let received = 0;
   let deleted = 0;
   const touchedDays = new Set<string>();
 
@@ -1513,7 +1513,7 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
           metadata    = EXCLUDED.metadata,
           deleted_at  = NULL
       `;
-      stored = result.count;
+      received = result.count;
 
       for (const s of new_samples) {
         const day = s.start_date.slice(0, 10);
@@ -1550,7 +1550,7 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
     `;
   });
 
-  return { stored, deleted };
+  return { received, deleted };
 }
 ```
 
@@ -1638,7 +1638,7 @@ Deno.test({
     });
     assertEquals(r.status, 200);
     const json = await r.json();
-    assertEquals(json, { stored: 1, deleted: 0 });
+    assertEquals(json, { received: 1, deleted: 0 });
   }
 });
 ```
@@ -3180,7 +3180,7 @@ RESPONSE=$(curl -sS -X POST "$INGEST_URL" \
     \"deleted_ids\": []
   }")
 echo "  $RESPONSE"
-echo "$RESPONSE" | grep -q '"stored":1' || { echo "FAIL: ingest did not store the sample"; exit 1; }
+echo "$RESPONSE" | grep -q '"received":1' || { echo "FAIL: ingest did not store the sample"; exit 1; }
 
 echo "→ Initialize MCP session"
 INIT=$(curl -sS -i -X POST "$MCP_URL" \

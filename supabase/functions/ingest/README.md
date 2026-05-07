@@ -40,7 +40,7 @@ Use `host.docker.internal` to reach the local Postgres exposed on port 54422.
      -H "Authorization: Bearer test-ingest-key" \
      -H "Content-Type: application/json" \
      -d '{"device_id":"dev1","new_samples":[],"deleted_ids":[]}'
-   # → {"stored":0,"deleted":0}
+   # → {"received":0,"deleted":0}
    ```
 
 ## Tests

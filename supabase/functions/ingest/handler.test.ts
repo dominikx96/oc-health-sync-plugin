@@ -30,7 +30,7 @@ Deno.test('inserts new samples', async () => {
       }],
       deleted_ids: []
     });
-    assertEquals(result.stored, 1);
+    assertEquals(result.received, 1);
     assertEquals(result.deleted, 0);
 
     const rows = await sql`SELECT count(*)::int AS n FROM health_samples`;

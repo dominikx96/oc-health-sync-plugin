@@ -28,7 +28,7 @@ RESPONSE=$(curl -sS -X POST "$INGEST_URL" \
     \"deleted_ids\": []
   }")
 echo "  $RESPONSE"
-echo "$RESPONSE" | grep -q '"stored":1' || { echo "FAIL: ingest did not store the sample"; exit 1; }
+echo "$RESPONSE" | grep -q '"received":1' || { echo "FAIL: ingest did not receive the sample"; exit 1; }
 
 echo "→ Initialize MCP session"
 INIT=$(curl -sS -i -X POST "$MCP_URL" \

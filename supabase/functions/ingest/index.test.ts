@@ -52,6 +52,6 @@ Deno.test({
     });
     assertEquals(r.status, 200);
     const json = await r.json();
-    assertEquals(json, { stored: 1, deleted: 0 });
+    assertEquals(json, { received: 1, deleted: 0 });
   }
 });

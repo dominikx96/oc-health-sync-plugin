@@ -3,8 +3,8 @@ import type { Sql } from './db.ts';
 import type { IngestPayload, Sample } from './schema.ts';
 
 export interface IngestResult {
-  stored:  number;
-  deleted: number;
+  received: number;
+  deleted:  number;
 }
 
 // ISO Monday (YYYY-MM-DD) of the week containing `dateStr` (also YYYY-MM-DD).
@@ -20,7 +20,7 @@ function isoMondayOf(dateStr: string): string {
 export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<IngestResult> {
   const { device_id, new_samples, deleted_ids } = payload;
 
-  let stored = 0;
+  let received = 0;
   let deleted = 0;
   const touchedDays = new Set<string>();
 
@@ -53,7 +53,7 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
           metadata    = EXCLUDED.metadata,
           deleted_at  = NULL
       `;
-      stored = result.count;
+      received = result.count;
 
       for (const s of new_samples) {
         const day = s.start_date.slice(0, 10);
@@ -92,5 +92,5 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
     `;
   });
 
-  return { stored, deleted };
+  return { received, deleted };
 }
