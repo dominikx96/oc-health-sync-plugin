@@ -5,7 +5,7 @@ set -euo pipefail
 : "${READ_USER_PASSWORD:?must be set in .env}"
 : "${POSTGRES_PASSWORD:?must be set in .env}"
 
-ADMIN_DSN="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:54322/postgres"
+ADMIN_DSN="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:54422/postgres"
 
 psql "$ADMIN_DSN" <<SQL
 DO \$\$
