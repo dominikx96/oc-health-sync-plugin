@@ -1,0 +1,12 @@
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ingest_user') THEN
+    CREATE ROLE ingest_user LOGIN PASSWORD 'ingest_pw' IN ROLE health_ingest_role;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'read_user') THEN
+    CREATE ROLE read_user LOGIN PASSWORD 'read_pw' IN ROLE health_read_role;
+  END IF;
+END $$;
+
+-- Local-dev convenience: allow ingest_user to TRUNCATE and seed test fixtures.
+GRANT TRUNCATE ON health_samples, device_state, summary_cache TO ingest_user;
+GRANT INSERT   ON summary_cache TO ingest_user;
