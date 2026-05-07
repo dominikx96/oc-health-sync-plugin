@@ -101,8 +101,19 @@ Deno.test('updates device_state', async () => {
 });
 
 Deno.test('marks summary_cache rows for affected dates as invalidated', async () => {
+  // 2026-04-01 is a Wednesday; the ISO Monday of that week is 2026-03-30.
+  // We seed one cache row per (period, expected-invalidate) state and assert
+  // both the daily, weekly, and monthly LIKE patterns hit the right rows.
   await withSql(async (sql) => {
-    await sql`INSERT INTO summary_cache (cache_key, markdown) VALUES ('daily:2026-04-01:UTC', 'old'), ('daily:2026-05-01:UTC', 'untouched')`;
+    await sql`
+      INSERT INTO summary_cache (cache_key, markdown) VALUES
+        ('daily:2026-04-01:UTC',   'old'),
+        ('daily:2026-05-01:UTC',   'untouched'),
+        ('weekly:2026-03-30:UTC',  'old-week'),
+        ('weekly:2026-04-06:UTC',  'untouched-week'),
+        ('monthly:2026-04:UTC',    'old-month'),
+        ('monthly:2026-05:UTC',    'untouched-month')
+    `;
     await handleIngest(sql, {
       device_id: 'dev1',
       new_samples: [{
@@ -115,10 +126,20 @@ Deno.test('marks summary_cache rows for affected dates as invalidated', async ()
       }],
       deleted_ids: []
     });
-    const touched = await sql`SELECT cache_key, invalidated FROM summary_cache ORDER BY cache_key`;
-    assertEquals(touched[0].cache_key, 'daily:2026-04-01:UTC');
-    assertEquals(touched[0].invalidated, true);
-    assertEquals(touched[1].cache_key, 'daily:2026-05-01:UTC');
-    assertEquals(touched[1].invalidated, false);
+    const rows = await sql`SELECT cache_key, invalidated FROM summary_cache ORDER BY cache_key`;
+    const byKey: Record<string, boolean> = {};
+    for (const r of rows) {
+      byKey[r.cache_key as string] = r.invalidated as boolean;
+    }
+
+    // Touched
+    assertEquals(byKey['daily:2026-04-01:UTC'],  true);
+    assertEquals(byKey['weekly:2026-03-30:UTC'], true);
+    assertEquals(byKey['monthly:2026-04:UTC'],   true);
+
+    // Untouched
+    assertEquals(byKey['daily:2026-05-01:UTC'],  false);
+    assertEquals(byKey['weekly:2026-04-06:UTC'], false);
+    assertEquals(byKey['monthly:2026-05:UTC'],   false);
   });
 });

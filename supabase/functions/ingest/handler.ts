@@ -7,6 +7,16 @@ export interface IngestResult {
   deleted: number;
 }
 
+// ISO Monday (YYYY-MM-DD) of the week containing `dateStr` (also YYYY-MM-DD).
+// Matches Task 3.5's cache-key generation so weekly cache invalidation lines up.
+function isoMondayOf(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  const dow = d.getUTCDay();
+  const diff = (dow + 6) % 7; // Sun=0 → 6, Mon=1 → 0, …
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<IngestResult> {
   const { device_id, new_samples, deleted_ids } = payload;
 
@@ -67,7 +77,7 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
         UPDATE summary_cache
            SET invalidated = true
          WHERE cache_key LIKE ANY(${days.map((d) => `daily:${d}:%`)})
-            OR cache_key LIKE ANY(${days.map((d) => `weekly:${d.slice(0, 7)}%:%`)})
+            OR cache_key LIKE ANY(${days.map((d) => `weekly:${isoMondayOf(d)}:%`)})
             OR cache_key LIKE ANY(${days.map((d) => `monthly:${d.slice(0, 7)}:%`)})
       `;
     }
