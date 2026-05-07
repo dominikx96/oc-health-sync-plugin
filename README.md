@@ -47,7 +47,12 @@ See [`supabase/functions/ingest/README.md`](./supabase/functions/ingest/README.m
 
 Tests:
 
+The handler and MCP tool tests hit the local Postgres directly and assume a clean database state. Always run `supabase db reset` first:
+
 ```bash
+# Refresh DB (applies migrations + seed.sql)
+cd supabase && supabase db reset && cd ..
+
 # Schema tests
 for t in supabase/tests/*.test.sql; do
   psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' -f "$t" || exit 1
@@ -59,6 +64,10 @@ cd supabase/functions/ingest && deno test --allow-env --allow-net --allow-read
 # MCP server tests
 cd mcp-server && npm test
 ```
+
+## Dependencies note
+
+The MCP server pins `@modelcontextprotocol/{server,express,node}` at `2.0.0-alpha.2`. These are pre-release packages on an unstable API surface; the pin is intentional to avoid drift. Plan to migrate to the stable SDK release once it ships.
 
 ## MCP client identity prompt
 

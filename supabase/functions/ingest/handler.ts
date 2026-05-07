@@ -82,6 +82,8 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
       `;
     }
 
+    // last_anchor is reserved for future server-managed anchor support.
+    // The current iOS client manages its own sync anchor; we only stamp last_synced_at.
     await tx`
       INSERT INTO device_state (device_id, last_synced_at, last_anchor)
       VALUES (${device_id}, now(), null)
