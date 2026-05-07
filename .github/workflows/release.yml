@@ -104,14 +104,18 @@ jobs:
           IMAGE="ghcr.io/${{ github.repository_owner }}/oc-health-sync-plugin/mcp-server"
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
-            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-            echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "version=${VERSION}"
+              echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest"
+              echo "is_release=true"
+            } >> "$GITHUB_OUTPUT"
           else
             SHORT="${GITHUB_SHA:0:7}"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            echo "tags=${IMAGE}:edge,${IMAGE}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "version="
+              echo "tags=${IMAGE}:edge,${IMAGE}:sha-${SHORT}"
+              echo "is_release=false"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build & push image
