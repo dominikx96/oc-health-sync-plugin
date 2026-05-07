@@ -5,6 +5,9 @@
 # come from the upstream compose. We only:
 #   - inject INGEST_API_KEY and INGEST_DATABASE_URL into the functions container
 #   - add our mcp-server service on the same network
+#
+# MCP_IMAGE is exported per-invocation by deploy/install.sh and deploy/upgrade.sh,
+# e.g. MCP_IMAGE=ghcr.io/dominikx96/oc-health-sync-plugin/mcp-server:v0.1.0.
 
 name: oc-health-sync
 
@@ -15,9 +18,7 @@ services:
       INGEST_DATABASE_URL: ${INGEST_DATABASE_URL}
 
   mcp:
-    build:
-      context: ../mcp-server
-      dockerfile: Dockerfile
+    image: ${MCP_IMAGE}
     restart: unless-stopped
     environment:
       MCP_API_KEY: ${MCP_API_KEY}
