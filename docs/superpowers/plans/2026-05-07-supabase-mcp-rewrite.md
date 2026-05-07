@@ -13,7 +13,7 @@
 **Conventions:**
 - Run all commands from the repo root (`oc-health-sync-plugin/`) unless otherwise stated.
 - Commits use short imperative-mood subjects, optionally prefixed `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` matching the project's existing history.
-- Database tests assume `supabase start` has been run once locally; that gives Postgres at `127.0.0.1:54322`, user `postgres`, password `postgres`, DB `postgres`.
+- Database tests assume `supabase start` has been run once locally; that gives Postgres at `127.0.0.1:54422`, user `postgres`, password `postgres`, DB `postgres`.
 - Whenever a step says "run X and expect Y", actually run it and verify before checking the box.
 
 ---
@@ -110,7 +110,7 @@ supabase start
 cd ..
 ```
 
-Expected: prints a list of service URLs (API, Studio, DB). Note the DB URL — it should be `postgresql://postgres:postgres@127.0.0.1:54322/postgres`.
+Expected: prints a list of service URLs (API, Studio, DB). Note the DB URL — it should be `postgresql://postgres:postgres@127.0.0.1:54422/postgres`.
 
 - [ ] **Step 5: Stop Supabase and commit**
 
@@ -302,7 +302,7 @@ END $$;
 
 ```bash
 supabase start
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/schema.test.sql
 ```
 
@@ -363,7 +363,7 @@ CREATE TABLE summary_cache (
 
 ```bash
 supabase db reset
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/schema.test.sql
 ```
 
@@ -427,7 +427,7 @@ END $$;
 - [ ] **Step 2: Run the test against the current schema (post-1.1) and confirm it fails**
 
 ```bash
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/roles.test.sql
 ```
 
@@ -471,9 +471,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 ```bash
 supabase db reset
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/schema.test.sql
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/roles.test.sql
 ```
 
@@ -537,7 +537,7 @@ TRUNCATE health_samples;
 - [ ] **Step 2: Run it; expect failure (the views don't exist yet)**
 
 ```bash
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/metrics_views.test.sql
 ```
 
@@ -658,7 +658,7 @@ GRANT EXECUTE ON FUNCTION monthly_metrics(TEXT) TO health_read_role, health_inge
 
 ```bash
 supabase db reset
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/metrics_views.test.sql
 ```
 
@@ -719,7 +719,7 @@ TRUNCATE health_samples;
 - [ ] **Step 2: Run; expect failure**
 
 ```bash
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/data_completeness.test.sql
 ```
 
@@ -786,7 +786,7 @@ GRANT EXECUTE ON FUNCTION data_completeness(TIMESTAMPTZ, TIMESTAMPTZ, TEXT)
 
 ```bash
 supabase db reset
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/data_completeness.test.sql
 ```
 
@@ -859,7 +859,7 @@ TRUNCATE health_samples;
 - [ ] **Step 2: Run; expect failure**
 
 ```bash
-psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' \
+psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' \
      -f supabase/tests/detect_anomalies.test.sql
 ```
 
@@ -982,7 +982,7 @@ GRANT EXECUTE ON FUNCTION detect_anomalies(INT) TO health_read_role, health_inge
 ```bash
 supabase db reset
 for t in supabase/tests/*.test.sql; do
-  psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -f "$t" || exit 1
+  psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' -f "$t" || exit 1
 done
 ```
 
@@ -1045,7 +1045,7 @@ cd supabase
 supabase functions serve ingest --no-verify-jwt &
 SERVE_PID=$!
 sleep 2
-curl -sS -X POST http://127.0.0.1:54321/functions/v1/ingest -d '{}'
+curl -sS -X POST http://127.0.0.1:54421/functions/v1/ingest -d '{}'
 kill $SERVE_PID
 cd ..
 ```
@@ -1307,7 +1307,7 @@ DO $$ BEGIN
 END $$;
 ```
 
-Verify: `supabase db reset` then `psql 'postgresql://ingest_user:ingest_pw@127.0.0.1:54322/postgres' -c 'select 1'` should print `1`.
+Verify: `supabase db reset` then `psql 'postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres' -c 'select 1'` should print `1`.
 
 - [ ] **Step 2: Write the failing handler test**
 
@@ -1318,7 +1318,7 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import postgres from 'npm:postgres@3.4.4';
 import { handleIngest } from './handler.ts';
 
-const DSN = 'postgresql://ingest_user:ingest_pw@127.0.0.1:54322/postgres';
+const DSN = 'postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres';
 
 async function withSql(fn: (sql: ReturnType<typeof postgres>) => Promise<void>) {
   const sql = postgres(DSN, { max: 2 });
@@ -1585,7 +1585,7 @@ Create `supabase/functions/ingest/index.test.ts`:
 ```typescript
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 
-const URL = 'http://127.0.0.1:54321/functions/v1/ingest';
+const URL = 'http://127.0.0.1:54421/functions/v1/ingest';
 const KEY = 'test-ingest-key';
 
 Deno.test({
@@ -1693,7 +1693,7 @@ Deno.serve(async (req) => {
 ```bash
 cd supabase
 supabase db reset
-INGEST_API_KEY=test-ingest-key INGEST_DATABASE_URL='postgresql://ingest_user:ingest_pw@127.0.0.1:54322/postgres' \
+INGEST_API_KEY=test-ingest-key INGEST_DATABASE_URL='postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres' \
   supabase functions serve ingest --no-verify-jwt &
 SERVE_PID=$!
 sleep 3
@@ -1716,7 +1716,7 @@ git commit -m "feat(ingest): wire HTTP handler with auth, validation, error mapp
 
 ## Phase 3 — MCP Server
 
-The MCP server lives at `mcp-server/`. Tests use Vitest with the local Supabase Postgres reachable at `127.0.0.1:54322`. Connection uses `read_user` (defined in seed.sql) which inherits from `health_read_role`.
+The MCP server lives at `mcp-server/`. Tests use Vitest with the local Supabase Postgres reachable at `127.0.0.1:54422`. Connection uses `read_user` (defined in seed.sql) which inherits from `health_read_role`.
 
 ### Task 3.1: DB pool module
 
@@ -1731,7 +1731,7 @@ The MCP server lives at `mcp-server/`. Tests use Vitest with the local Supabase 
 import { describe, it, expect, afterAll } from 'vitest';
 import { createPool } from './db.ts';
 
-const DSN = process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres';
+const DSN = process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
 const pool = createPool(DSN);
 
 afterAll(async () => { await pool.end(); });
@@ -1926,7 +1926,7 @@ import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { createPool } from '../db.ts';
 import { healthAnomalies } from './health-anomalies.ts';
 
-const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres');
+const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
 
 beforeEach(async () => {
@@ -1936,7 +1936,7 @@ beforeEach(async () => {
 describe('healthAnomalies', () => {
   it('returns markdown with no anomalies on empty DB', async () => {
     // we cannot truncate as read_user. Use an admin connection just for setup.
-    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54322/postgres');
+    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
     await adminPool.query('TRUNCATE health_samples');
     await adminPool.end();
 
@@ -1945,7 +1945,7 @@ describe('healthAnomalies', () => {
   });
 
   it('reports a sleep_deficit anomaly', async () => {
-    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54322/postgres');
+    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
     await adminPool.query('TRUNCATE health_samples');
     for (let i = 0; i < 30; i++) {
       const start = new Date(`2026-04-01T22:00:00Z`);
@@ -2050,7 +2050,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { createPool } from '../db.ts';
 import { runSql } from './run-sql.ts';
 
-const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres');
+const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
 
 describe('runSql', () => {
@@ -2182,8 +2182,8 @@ import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { createPool } from '../db.ts';
 import { healthSummary } from './health-summary.ts';
 
-const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres');
-const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54322/postgres');
+const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
+const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); await adminPool.end(); });
 
 beforeEach(async () => {
@@ -2443,7 +2443,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { createPool } from '../db.ts';
 import { describeSchema } from './schema.ts';
 
-const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres');
+const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); });
 
 describe('describeSchema', () => {
@@ -2575,7 +2575,7 @@ describe('mcp server end-to-end', () => {
 
   beforeAll(async () => {
     process.env.MCP_API_KEY = 'mcp-test-key';
-    process.env.MCP_DATABASE_URL = 'postgresql://read_user:read_pw@127.0.0.1:54322/postgres';
+    process.env.MCP_DATABASE_URL = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
     const handle = await startServer(0);
     close = handle.close;
     port = handle.port;
@@ -2903,7 +2903,7 @@ set -euo pipefail
 : "${READ_USER_PASSWORD:?must be set in .env}"
 : "${POSTGRES_PASSWORD:?must be set in .env}"
 
-ADMIN_DSN="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:54322/postgres"
+ADMIN_DSN="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:54422/postgres"
 
 psql "$ADMIN_DSN" <<SQL
 DO \$\$
@@ -3050,19 +3050,19 @@ docker compose logs -f db   # wait for "database system is ready to accept conne
 ```bash
 cd /path/to/oc-health-sync
 PGPASSWORD=$POSTGRES_PASSWORD psql \
-  -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+  -h 127.0.0.1 -p 54422 -U postgres -d postgres \
   -f supabase/migrations/20260507000000_init_tables.sql
-PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54422 -U postgres -d postgres \
   -f supabase/migrations/20260507000100_roles.sql
-PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54422 -U postgres -d postgres \
   -f supabase/migrations/20260507000200_metrics_views.sql
-PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54422 -U postgres -d postgres \
   -f supabase/migrations/20260507000300_data_completeness.sql
-PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+PGPASSWORD=$POSTGRES_PASSWORD psql -h 127.0.0.1 -p 54422 -U postgres -d postgres \
   -f supabase/migrations/20260507000400_detect_anomalies.sql
 ```
 
-(If the Supabase CLI is installed on the VPS, `supabase db push --db-url "postgresql://postgres:$POSTGRES_PASSWORD@127.0.0.1:54322/postgres"` from inside the repo applies all of them in one shot.)
+(If the Supabase CLI is installed on the VPS, `supabase db push --db-url "postgresql://postgres:$POSTGRES_PASSWORD@127.0.0.1:54422/postgres"` from inside the repo applies all of them in one shot.)
 
 ## 7. Create login users and grant role memberships
 
@@ -3219,7 +3219,7 @@ cd deploy
 INGEST_API_KEY=test-ingest-key \
 MCP_API_KEY=mcp-test-key \
 MCP_PORT=3737 \
-INGEST_URL=http://127.0.0.1:54321/functions/v1/ingest \
+INGEST_URL=http://127.0.0.1:54421/functions/v1/ingest \
 ./smoke.sh
 cd ..
 ```
@@ -3274,13 +3274,13 @@ supabase db reset
 
 # 3. Run the Edge Function locally
 INGEST_API_KEY=test-ingest-key \
-INGEST_DATABASE_URL='postgresql://ingest_user:ingest_pw@127.0.0.1:54322/postgres' \
+INGEST_DATABASE_URL='postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres' \
 supabase functions serve ingest --no-verify-jwt
 
 # 4. In another terminal, run the MCP server
 cd mcp-server
 MCP_API_KEY=mcp-test-key \
-MCP_DATABASE_URL='postgresql://read_user:read_pw@127.0.0.1:54322/postgres' \
+MCP_DATABASE_URL='postgresql://read_user:read_pw@127.0.0.1:54422/postgres' \
 npm run dev
 ```
 
@@ -3289,7 +3289,7 @@ Tests:
 ```bash
 # Schema tests
 for t in supabase/tests/*.test.sql; do
-  psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -f "$t" || exit 1
+  psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' -f "$t" || exit 1
 done
 
 # Edge Function tests
@@ -3352,7 +3352,7 @@ After Task 5.2 the rewrite is complete. Run the local test suites one final time
 ```bash
 # Schema
 for t in supabase/tests/*.test.sql; do
-  psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -f "$t" || exit 1
+  psql 'postgresql://postgres:postgres@127.0.0.1:54422/postgres' -f "$t" || exit 1
 done
 # Edge Function
 cd supabase/functions/ingest && deno test --allow-env --allow-net --allow-read
@@ -3362,7 +3362,7 @@ cd mcp-server && npm test
 cd ..
 # Smoke
 INGEST_API_KEY=test-ingest-key MCP_API_KEY=mcp-test-key MCP_PORT=3737 \
-  INGEST_URL=http://127.0.0.1:54321/functions/v1/ingest deploy/smoke.sh
+  INGEST_URL=http://127.0.0.1:54421/functions/v1/ingest deploy/smoke.sh
 ```
 
 All four should report success.
