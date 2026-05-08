@@ -148,10 +148,20 @@ if [[ "$MODE" == "install" ]]; then
     cp "${SUPABASE_DIR}/.env.example" "${SUPABASE_DIR}/.env"
   fi
 
-  # Restore executable bit on volume scripts. Some Supabase repo files (notably
-  # volumes/api/kong-entrypoint.sh) ship without the exec bit set, which makes
-  # the kong container fail at startup with "Permission denied".
-  find "${SUPABASE_DIR}/volumes" -name '*.sh' -exec chmod +x {} +
+  # Make volume files readable + executable by container users.
+  #
+  # Containers in upstream Supabase compose run as non-root (kong, deno-runtime,
+  # etc.). Mounted host files are accessed by UID, not by user name — so a file
+  # checked out as 0600 (rw------- root) is unreadable inside the container.
+  # On VPSes with umask 077, the supabase git clone produces 0600 files, and
+  # `chmod +x` alone only flips owner-x → 0700, still unreadable to others.
+  #
+  # `chmod -R go+rX` adds read for group/others everywhere (and execute on
+  # things that already have execute or are directories). Then we set scripts
+  # to 0755 unconditionally so kong's entrypoint can be executed by its
+  # in-container user regardless of what bits git checked out.
+  chmod -R go+rX "${SUPABASE_DIR}/volumes"
+  find "${SUPABASE_DIR}/volumes" -name '*.sh' -exec chmod 0755 {} +
 
   MARKER="# --- oc-health-sync overlay ---"
   if ! grep -qF "${MARKER}" "${SUPABASE_DIR}/.env"; then
