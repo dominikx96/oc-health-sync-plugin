@@ -187,9 +187,14 @@ echo "→ Pulling ${MCP_IMAGE}"
 dc pull mcp
 
 # --- Install: bring up infra (no mcp yet — read_user doesn't exist) -------
+# We use --no-deps for kong/functions to skip the upstream analytics service.
+# Analytics is logflare (~500MB resident) and is observability-only — kong
+# routes and functions runs without it. Skipping kills a known startup race
+# (analytics needs a "_supabase" DB the postgres init scripts create after
+# pg_isready returns yes).
 if [[ "$MODE" == "install" ]]; then
-  echo "→ Starting db, kong, functions"
-  dc up -d db kong functions
+  echo "→ Starting db"
+  dc up -d db
 
   echo "→ Waiting for Postgres"
   for _ in $(seq 1 60); do
@@ -198,6 +203,9 @@ if [[ "$MODE" == "install" ]]; then
   done
   docker exec supabase-db pg_isready -U postgres >/dev/null 2>&1 \
     || { echo "FATAL: Postgres did not become ready in 60s" >&2; exit 1; }
+
+  echo "→ Starting kong, functions (skipping unused supabase analytics)"
+  dc up -d --no-deps kong functions
 fi
 
 # --- Migrate (always, fail-fast before any restart) -----------------------
@@ -245,12 +253,14 @@ docker rm "${CID}" >/dev/null
 trap - EXIT
 
 # --- Bring everything up --------------------------------------------------
+# --no-deps everywhere to keep analytics + other unused upstream services
+# (storage, realtime, auth, rest, imgproxy, vector, meta, studio) from starting.
 if [[ "$MODE" == "install" ]]; then
-  echo "→ Starting all services"
-  dc up -d
+  echo "→ Starting mcp"
+  dc up -d --no-deps mcp
 else
   echo "→ Restarting mcp + functions"
-  dc up -d --force-recreate mcp functions
+  dc up -d --force-recreate --no-deps mcp functions
 fi
 
 # --- Smoke ----------------------------------------------------------------
