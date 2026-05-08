@@ -4,7 +4,7 @@
 
 **Goal:** Replace the current "git clone + docker compose build" deploy flow with a versioned-release pipeline: GitHub Actions builds & publishes a Docker image to private GHCR + a tarball to GitHub Releases on every `v*` tag, and a single `./upgrade.sh vX.Y.Z` command on the VPS pulls the new version, runs migrations as a fail-fast one-shot, and falls back to a fresh `pg_dump` snapshot on rollback.
 
-**Architecture:** One workflow at `.github/workflows/release.yml` triggers on pushes to `master` (publishes `:edge` + `:sha-…` images, no release) and on tags `v*` (publishes `:vX.Y.Z` + `:latest` images plus a release tarball). The MCP image bakes `supabase/migrations/` and `supabase/functions/ingest/` into `/release/`, so the image *is* the release. On the VPS, two operator scripts (`install.sh`, `upgrade.sh`) drive transitions; a stable directory `~/oc-health-sync/` holds operator state across upgrades.
+**Architecture:** One workflow at `.github/workflows/release.yml` triggers on pushes to `main` (publishes `:edge` + `:sha-…` images, no release) and on tags `v*` (publishes `:vX.Y.Z` + `:latest` images plus a release tarball). The MCP image bakes `supabase/migrations/` and `supabase/functions/ingest/` into `/release/`, so the image *is* the release. On the VPS, two operator scripts (`install.sh`, `upgrade.sh`) drive transitions; a stable directory `~/oc-health-sync/` holds operator state across upgrades.
 
 **Tech Stack:** GitHub Actions, Docker buildx, GHCR, `gh` CLI, bash, `shellcheck`, `actionlint`, Postgres 15, existing Node 24 / Deno / vitest / SQL test stacks.
 
@@ -15,7 +15,7 @@
 - Run all commands from the repo root (`oc-health-sync-plugin/`) unless otherwise stated.
 - All shell-script edits are followed by a `shellcheck -x <file>` pass; the workflow file is followed by an `actionlint` pass. Treat warnings as failures unless the plan explicitly says otherwise.
 - After every commit: run `git status` and verify the working tree is clean before moving on.
-- Phases 1–5 happen on the `feature/supabase-mcp-rewrite` branch. Phases 6–7 happen against `master` (require merge first).
+- Phases 1–5 happen on the `feature/supabase-mcp-rewrite` branch. Phases 6–7 happen against `main` (require merge first).
 - "Test" for shell scripts here means static analysis + a targeted manual exercise (build, dry-run, etc.); we are not setting up Bats. The full integration test is the rehearsal in Phase 6.
 
 ---
@@ -754,7 +754,7 @@ name: release
 on:
   push:
     branches:
-      - master
+      - main
     tags:
       - 'v*'
 
@@ -934,17 +934,17 @@ Edit `.github/workflows/release.yml`. In the `on.push.branches` list, add the fe
 on:
   push:
     branches:
-      - master
+      - main
       - feature/supabase-mcp-rewrite
     tags:
       - 'v*'
 ```
 
-Also, since we don't want the test run to publish a real image while we're still verifying, gate the publish steps on `github.ref` being `master` *or* a tag:
+Also, since we don't want the test run to publish a real image while we're still verifying, gate the publish steps on `github.ref` being `main` *or* a tag:
 
 ```yaml
       - name: Build & push image
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v6
         ...
 ```
@@ -985,7 +985,7 @@ Edit `.github/workflows/release.yml` again. Restore the original trigger and rem
 on:
   push:
     branches:
-      - master
+      - main
     tags:
       - 'v*'
 ```
@@ -1224,8 +1224,8 @@ Create `CONTRIBUTING.md` at the repo root with these contents:
 A release is a single git tag plus the artifacts that the `release.yml` workflow produces from it (image on GHCR, tarball on GitHub Releases).
 
 ```bash
-# All on master, after a green CI build of the merge commit:
-git checkout master && git pull
+# All on main, after a green CI build of the merge commit:
+git checkout main && git pull
 git tag vX.Y.Z
 git push origin vX.Y.Z
 gh run watch --exit-status
@@ -1272,7 +1272,7 @@ See the top-level `README.md` for the local-dev loop with `supabase start`. The 
 
 ## Branching
 
-- `master` — protected; every commit has gone through CI.
+- `main` — protected; every commit has gone through CI.
 - `feature/*` — work branches. CI does **not** run on these by default. To wet-test the workflow on a feature branch, temporarily widen the `branches:` list in `release.yml` and revert before merging.
 ````
 
@@ -1289,9 +1289,9 @@ git commit -m "docs: add CONTRIBUTING (release procedure + migration discipline)
 
 This phase actually exercises the full release/upgrade/rollback path before any "real" release. Most steps run on the VPS — they cannot be done from local dev.
 
-**Order:** merge to `master` → push `v0.0.1-rc1` → install on VPS → push `v0.0.1-rc2` → upgrade on VPS → rollback on VPS → delete the rc tags. Only then do you cut `v0.1.0`.
+**Order:** merge to `main` → push `v0.0.1-rc1` → install on VPS → push `v0.0.1-rc2` → upgrade on VPS → rollback on VPS → delete the rc tags. Only then do you cut `v0.1.0`.
 
-### Task 6.1: Merge `feature/supabase-mcp-rewrite` to `master`
+### Task 6.1: Merge `feature/supabase-mcp-rewrite` to `main`
 
 **Files:** none (branch operation).
 
@@ -1299,7 +1299,7 @@ This phase actually exercises the full release/upgrade/rollback path before any 
 
 ```bash
 git push -u origin feature/supabase-mcp-rewrite
-gh pr create --base master --title "feat: VPS deploy + versioning pipeline" \
+gh pr create --base main --title "feat: VPS deploy + versioning pipeline" \
   --body "Implements docs/superpowers/specs/2026-05-07-vps-deploy-versioning-design.md.
 
 ## Summary
@@ -1322,7 +1322,7 @@ gh pr create --base master --title "feat: VPS deploy + versioning pipeline" \
 gh pr checks --watch
 ```
 
-Note: at this point the workflow only triggers on `branches: [master]`, so the PR push itself does not run CI. You will need to either re-temporarily widen the trigger (as in Task 4.2) for the PR to validate, or accept that the next CI run will be the merge-to-master push.
+Note: at this point the workflow only triggers on `branches: [main]`, so the PR push itself does not run CI. You will need to either re-temporarily widen the trigger (as in Task 4.2) for the PR to validate, or accept that the next CI run will be the merge-to-main push.
 
 - [ ] **Step 3: Merge**
 
@@ -1330,13 +1330,13 @@ Note: at this point the workflow only triggers on `branches: [master]`, so the P
 gh pr merge --squash --auto
 ```
 
-After auto-merge, watch the master-branch CI run:
+After auto-merge, watch the main-branch CI run:
 
 ```bash
 gh run watch --exit-status
 ```
 
-Expected: workflow runs on master push, all tests pass, and `:edge` + `:sha-…` images get published. Verify on GHCR:
+Expected: workflow runs on main push, all tests pass, and `:edge` + `:sha-…` images get published. Verify on GHCR:
 
 ```bash
 gh api "/users/dominikx96/packages/container/oc-health-sync-plugin%2Fmcp-server/versions" \
@@ -1354,7 +1354,7 @@ You should see `["edge", "sha-<short>"]`.
 - [ ] **Step 1: Tag and push**
 
 ```bash
-git checkout master && git pull
+git checkout main && git pull
 git tag v0.0.1-rc1
 git push origin v0.0.1-rc1
 gh run watch --exit-status
@@ -1499,7 +1499,7 @@ git commit -m "chore(rehearsal): trivial diff for rc2"
 git push
 ```
 
-- [ ] **Step 2: Wait for the master CI run**
+- [ ] **Step 2: Wait for the main CI run**
 
 ```bash
 gh run watch --exit-status
@@ -1616,7 +1616,7 @@ gh api -X DELETE "/user/packages/container/oc-health-sync-plugin%2Fmcp-server/ve
 - [ ] **Step 4: Revert the trivial rehearsal change**
 
 ```bash
-git checkout master && git pull
+git checkout main && git pull
 # Edit deploy/README.md and remove the "<!-- rehearsal rc2 -->" comment.
 git commit -am "chore: drop rehearsal marker"
 git push
@@ -1631,14 +1631,14 @@ gh run watch --exit-status
 
 **Files:** none.
 
-- [ ] **Step 1: Confirm master is green**
+- [ ] **Step 1: Confirm main is green**
 
 ```bash
-git checkout master && git pull
+git checkout main && git pull
 gh run list --workflow release.yml --limit 1
 ```
 
-Expected: most recent run is on master, status `completed`, conclusion `success`.
+Expected: most recent run is on main, status `completed`, conclusion `success`.
 
 - [ ] **Step 2: Tag v0.1.0**
 

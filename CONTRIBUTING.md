@@ -5,8 +5,8 @@
 A release is a single git tag plus the artifacts that the `release.yml` workflow produces from it (image on GHCR, tarball on GitHub Releases).
 
 ```bash
-# All on master, after a green CI build of the merge commit:
-git checkout master && git pull
+# All on main, after a green CI build of the merge commit:
+git checkout main && git pull
 git tag vX.Y.Z
 git push origin vX.Y.Z
 gh run watch --exit-status
@@ -53,5 +53,5 @@ See the top-level `README.md` for the local-dev loop with `supabase start`. The 
 
 ## Branching
 
-- `master` — protected; every commit has gone through CI.
+- `main` — protected; every commit has gone through CI.
 - `feature/*` — work branches. CI does **not** run on these by default. To wet-test the workflow on a feature branch, temporarily widen the `branches:` list in `release.yml` and revert before merging.
