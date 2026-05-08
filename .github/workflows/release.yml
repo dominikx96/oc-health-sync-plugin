@@ -127,30 +127,12 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
 
-      - name: Assemble release tarball
-        if: steps.tags.outputs.is_release == 'true'
-        run: |
-          VER="${{ steps.tags.outputs.version }}"
-          DIR="oc-health-sync-${VER}"
-          mkdir -p "${DIR}"
-          cp deploy/install.sh \
-             deploy/upgrade.sh \
-             deploy/docker-compose.mcp.yml \
-             deploy/init-users.sh \
-             deploy/.env.example \
-             deploy/smoke.sh \
-             deploy/README.md \
-             "${DIR}/"
-          echo "${VER}" > "${DIR}/VERSION"
-          tar czf "${DIR}.tar.gz" "${DIR}"
-          ls -l "${DIR}.tar.gz"
-
-      - name: Create GitHub release with tarball
+      - name: Create GitHub release
         if: steps.tags.outputs.is_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER="${{ steps.tags.outputs.version }}"
-          gh release create "${VER}" "oc-health-sync-${VER}.tar.gz" \
+          gh release create "${VER}" \
             --title "${VER}" \
-            --notes "Automated release. See spec at docs/superpowers/specs/2026-05-07-vps-deploy-versioning-design.md."
+            --notes "Image: \`ghcr.io/${{ github.repository_owner }}/oc-health-sync-plugin/mcp-server:${VER}\`. To install/upgrade on a VPS: \`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/deploy/install.sh | bash -s -- ${VER}\`."
