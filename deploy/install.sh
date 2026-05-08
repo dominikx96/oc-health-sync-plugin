@@ -148,6 +148,11 @@ if [[ "$MODE" == "install" ]]; then
     cp "${SUPABASE_DIR}/.env.example" "${SUPABASE_DIR}/.env"
   fi
 
+  # Restore executable bit on volume scripts. Some Supabase repo files (notably
+  # volumes/api/kong-entrypoint.sh) ship without the exec bit set, which makes
+  # the kong container fail at startup with "Permission denied".
+  find "${SUPABASE_DIR}/volumes" -name '*.sh' -exec chmod +x {} +
+
   MARKER="# --- oc-health-sync overlay ---"
   if ! grep -qF "${MARKER}" "${SUPABASE_DIR}/.env"; then
     echo "→ Merging .env into ${SUPABASE_DIR}/.env"
