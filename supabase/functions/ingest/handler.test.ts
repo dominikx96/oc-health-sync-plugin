@@ -2,7 +2,7 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import postgres from 'npm:postgres@3.4.4';
 import { handleIngest } from './handler.ts';
 
-const DSN = 'postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres';
+const DSN = Deno.env.get('INGEST_DATABASE_URL') ?? 'postgresql://ingest_user:ingest_pw@127.0.0.1:54422/postgres';
 
 async function withSql(fn: (sql: ReturnType<typeof postgres>) => Promise<void>) {
   const sql = postgres(DSN, { max: 2 });
