@@ -1,5 +1,5 @@
 -- Health samples: one row per HealthKit sample, soft-deleted via deleted_at.
-CREATE TABLE health_samples (
+CREATE TABLE IF NOT EXISTS health_samples (
   id           BIGSERIAL PRIMARY KEY,
   uuid         TEXT NOT NULL UNIQUE,
   sample_kind  TEXT NOT NULL CHECK (sample_kind IN ('quantity', 'category', 'workout')),
@@ -15,16 +15,16 @@ CREATE TABLE health_samples (
   deleted_at   TIMESTAMPTZ
 );
 
-CREATE INDEX idx_samples_data_type_start
+CREATE INDEX IF NOT EXISTS idx_samples_data_type_start
   ON health_samples (data_type, start_date)
   WHERE deleted_at IS NULL;
 
-CREATE INDEX idx_samples_start_date
+CREATE INDEX IF NOT EXISTS idx_samples_start_date
   ON health_samples (start_date)
   WHERE deleted_at IS NULL;
 
 -- Device sync state: one row per device that has ever uploaded.
-CREATE TABLE device_state (
+CREATE TABLE IF NOT EXISTS device_state (
   device_id      TEXT PRIMARY KEY,
   last_anchor    TEXT,
   last_synced_at TIMESTAMPTZ,
@@ -36,7 +36,7 @@ CREATE TABLE device_state (
 --   daily:<date>:<tz>
 --   weekly:<monday-of-week>:<tz>
 --   monthly:YYYY-MM:<tz>
-CREATE TABLE summary_cache (
+CREATE TABLE IF NOT EXISTS summary_cache (
   cache_key    TEXT PRIMARY KEY,
   markdown     TEXT NOT NULL,
   generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
