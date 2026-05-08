@@ -268,6 +268,19 @@ else
   dc up -d --force-recreate --no-deps mcp functions
 fi
 
+# --- Wait for MCP to accept connections ----------------------------------
+# `docker compose up` returns when the container is *started*, not when its
+# HTTP server has bound. Smoke runs immediately after, so we'd race the
+# server's listen() call. Poll /mcp until anything responds (4xx is fine —
+# means the server is up and rejecting our unauthenticated GET).
+echo "→ Waiting for MCP to accept connections"
+for _ in $(seq 1 30); do
+  if curl -sS -o /dev/null -m 2 "http://127.0.0.1:${MCP_PORT}/mcp" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
 # --- Smoke ----------------------------------------------------------------
 echo "→ Smoke test"
 ./smoke.sh
