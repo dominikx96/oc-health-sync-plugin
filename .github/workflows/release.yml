@@ -79,6 +79,7 @@ jobs:
         working-directory: mcp-server
         env:
           MCP_DATABASE_URL: postgresql://read_user:read_pw@127.0.0.1:5432/postgres
+          MCP_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: npm test
 
       - name: Run deno tests (ingest edge function)

@@ -12,7 +12,7 @@ beforeEach(async () => {
 describe('healthAnomalies', () => {
   it('returns markdown with no anomalies on empty DB', async () => {
     // we cannot truncate as read_user. Use an admin connection just for setup.
-    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
+    const adminPool = createPool(process.env.MCP_ADMIN_DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54422/postgres');
     await adminPool.query('TRUNCATE health_samples');
     await adminPool.end();
 
@@ -21,7 +21,7 @@ describe('healthAnomalies', () => {
   });
 
   it('reports a sleep_deficit anomaly', async () => {
-    const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
+    const adminPool = createPool(process.env.MCP_ADMIN_DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54422/postgres');
     await adminPool.query('TRUNCATE health_samples');
     for (let i = 0; i < 30; i++) {
       const start = new Date(`2026-04-01T22:00:00Z`);

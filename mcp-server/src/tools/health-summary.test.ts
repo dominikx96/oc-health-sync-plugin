@@ -3,7 +3,7 @@ import { createPool } from '../db.js';
 import { healthSummary } from './health-summary.js';
 
 const pool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
-const adminPool = createPool('postgresql://postgres:postgres@127.0.0.1:54422/postgres');
+const adminPool = createPool(process.env.MCP_ADMIN_DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54422/postgres');
 afterAll(async () => { await pool.end(); await adminPool.end(); });
 
 beforeEach(async () => {
