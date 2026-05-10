@@ -1,4 +1,5 @@
 import type { Pool } from '../db.js';
+import { WORKOUT_ACTIVITY_TYPES } from '../constants/workout-activity-types.js';
 
 interface ColumnRow { table_name: string; column_name: string; data_type: string; }
 
@@ -27,6 +28,18 @@ export async function describeSchema(pool: Pool): Promise<string> {
     ].join('\n')
   ).join('\n');
 
+  const workoutTypesSection = [
+    '## Workout activity types',
+    '',
+    'Mapping of `workout_activity_type_id` (Apple `HKWorkoutActivityType` raw value) to its canonical name.',
+    'Use the id when filtering `health_samples` rows where `sample_kind = \'workout\'`.',
+    '',
+    '| id | name |',
+    '|---|---|',
+    ...WORKOUT_ACTIVITY_TYPES.map((w) => `| ${w.id} | \`${w.name}\` |`),
+    ''
+  ].join('\n');
+
   return [
     '# oc-health-sync database',
     '',
@@ -43,6 +56,7 @@ export async function describeSchema(pool: Pool): Promise<string> {
     '- `data_completeness(p_start TIMESTAMPTZ, p_end TIMESTAMPTZ, p_tz TEXT)` — per-day counts by `data_type` with gaps as 0.',
     '- `detect_anomalies(p_window_days INT)` — returns rows of `{ kind, severity, detail, ref_date }`. Severity is one of `info`, `warn`, `alert`.',
     '',
+    workoutTypesSection,
     '## Example queries',
     '',
     '```sql',
@@ -54,6 +68,15 @@ export async function describeSchema(pool: Pool): Promise<string> {
     " WHERE deleted_at IS NULL AND data_type = 'HKQuantityTypeIdentifierHeartRate'",
     "   AND start_date >= now() - INTERVAL '7 days'",
     ' GROUP BY 1 ORDER BY 1;',
+    '',
+    '-- all cycling workouts in the last 6 months',
+    'SELECT start_date, workout_duration_seconds, workout_distance_m, workout_energy_kcal',
+    '  FROM health_samples',
+    ' WHERE deleted_at IS NULL',
+    "   AND sample_kind = 'workout'",
+    '   AND workout_activity_type_id = 13',
+    "   AND start_date >= now() - INTERVAL '6 months'",
+    ' ORDER BY start_date DESC;',
     '```'
   ].join('\n');
 }
