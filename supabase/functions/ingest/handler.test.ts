@@ -87,6 +87,43 @@ Deno.test('soft-deletes by uuid', async () => {
   });
 });
 
+Deno.test('persists workout-specific columns', async () => {
+  await withSql(async (sql) => {
+    const result = await handleIngest(sql, {
+      device_id: 'dev1',
+      new_samples: [{
+        uuid: 'w1',
+        sample_kind: 'workout',
+        data_type: 'HKWorkoutTypeIdentifier',
+        workout_activity_name: 'cycling',
+        workout_activity_type_id: 13,
+        workout_duration: 1834.2,
+        workout_energy: 312.5,
+        workout_distance: 4820.7,
+        start_date: '2026-04-01T07:00:00Z',
+        end_date:   '2026-04-01T07:30:00Z',
+        source_name: 'Apple Watch'
+      }],
+      deleted_ids: []
+    });
+    assertEquals(result.received, 1);
+
+    const rows = await sql`
+      SELECT workout_activity_type_id, workout_activity_name,
+             workout_duration_seconds, workout_energy_kcal, workout_distance_m,
+             value, unit
+        FROM health_samples WHERE uuid = 'w1'
+    `;
+    assertEquals(rows[0].workout_activity_type_id, 13);
+    assertEquals(rows[0].workout_activity_name, 'cycling');
+    assertEquals(Number(rows[0].workout_duration_seconds), 1834.2);
+    assertEquals(Number(rows[0].workout_energy_kcal), 312.5);
+    assertEquals(Number(rows[0].workout_distance_m), 4820.7);
+    assertEquals(rows[0].value, null);
+    assertEquals(rows[0].unit, null);
+  });
+});
+
 Deno.test('updates device_state', async () => {
   await withSql(async (sql) => {
     await handleIngest(sql, {

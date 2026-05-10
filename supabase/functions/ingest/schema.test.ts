@@ -54,3 +54,61 @@ Deno.test('rejects a non-ISO date', () => {
   });
   assertEquals(result.success, false);
 });
+
+Deno.test('parses a valid workout sample', () => {
+  const result = IngestPayloadSchema.safeParse({
+    device_id: 'dev1',
+    new_samples: [{
+      uuid: 'w1',
+      sample_kind: 'workout',
+      data_type: 'HKWorkoutTypeIdentifier',
+      workout_activity_name: 'cycling',
+      workout_activity_type_id: 13,
+      workout_duration: 1834.2,
+      workout_energy: 312.5,
+      workout_distance: 4820.7,
+      start_date: '2026-04-01T07:00:00Z',
+      end_date:   '2026-04-01T07:30:00Z',
+      source_name: 'Apple Watch'
+    }],
+    deleted_ids: []
+  });
+  assert(result.success, JSON.stringify(result));
+});
+
+Deno.test('parses a workout sample with null energy/distance', () => {
+  const result = IngestPayloadSchema.safeParse({
+    device_id: 'dev1',
+    new_samples: [{
+      uuid: 'w2',
+      sample_kind: 'workout',
+      data_type: 'HKWorkoutTypeIdentifier',
+      workout_activity_name: 'yoga',
+      workout_activity_type_id: 57,
+      workout_duration: 1200,
+      workout_energy: null,
+      workout_distance: null,
+      start_date: '2026-04-01T07:00:00Z',
+      end_date:   '2026-04-01T07:20:00Z'
+    }],
+    deleted_ids: []
+  });
+  assert(result.success, JSON.stringify(result));
+});
+
+Deno.test('rejects a workout sample missing workout_activity_type_id', () => {
+  const result = IngestPayloadSchema.safeParse({
+    device_id: 'dev1',
+    new_samples: [{
+      uuid: 'w3',
+      sample_kind: 'workout',
+      data_type: 'HKWorkoutTypeIdentifier',
+      workout_activity_name: 'cycling',
+      workout_duration: 1200,
+      start_date: '2026-04-01T07:00:00Z',
+      end_date:   '2026-04-01T07:20:00Z'
+    }],
+    deleted_ids: []
+  });
+  assertEquals(result.success, false);
+});

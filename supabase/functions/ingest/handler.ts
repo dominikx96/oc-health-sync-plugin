@@ -27,31 +27,46 @@ export async function handleIngest(sql: Sql, payload: IngestPayload): Promise<In
   await sql.begin(async (tx) => {
     if (new_samples.length > 0) {
       const rows = new_samples.map((s: Sample) => ({
-        uuid:        s.uuid,
-        sample_kind: s.sample_kind,
-        data_type:   s.data_type,
-        value:       s.value ?? null,
-        unit:        s.unit ?? null,
-        start_date:  s.start_date,
-        end_date:    s.end_date,
-        source_name: s.source_name ?? null,
-        metadata:    s.metadata ?? null,
-        device_id:   device_id
+        uuid:                     s.uuid,
+        sample_kind:              s.sample_kind,
+        data_type:                s.data_type,
+        value:                    s.sample_kind === 'workout' ? null : s.value,
+        unit:                     s.sample_kind === 'workout' ? null : s.unit,
+        start_date:               s.start_date,
+        end_date:                 s.end_date,
+        source_name:              s.source_name ?? null,
+        metadata:                 s.metadata ?? null,
+        device_id:                device_id,
+        workout_activity_type_id: s.sample_kind === 'workout' ? s.workout_activity_type_id : null,
+        workout_activity_name:    s.sample_kind === 'workout' ? s.workout_activity_name    : null,
+        workout_duration_seconds: s.sample_kind === 'workout' ? s.workout_duration         : null,
+        workout_energy_kcal:      s.sample_kind === 'workout' ? (s.workout_energy   ?? null) : null,
+        workout_distance_m:       s.sample_kind === 'workout' ? (s.workout_distance ?? null) : null
       }));
 
       // postgres-js Helper variance: cast rows to the shape expected by the insert helper overload.
       type InsertRow = Record<string, postgres.ParameterOrJSON<never> | undefined>;
       const typedRows = rows as unknown as InsertRow[];
       const result = await tx`
-        INSERT INTO health_samples ${ tx(typedRows, 'uuid', 'sample_kind', 'data_type', 'value', 'unit', 'start_date', 'end_date', 'source_name', 'metadata', 'device_id') }
+        INSERT INTO health_samples ${ tx(typedRows,
+          'uuid', 'sample_kind', 'data_type', 'value', 'unit',
+          'start_date', 'end_date', 'source_name', 'metadata', 'device_id',
+          'workout_activity_type_id', 'workout_activity_name',
+          'workout_duration_seconds', 'workout_energy_kcal', 'workout_distance_m'
+        ) }
         ON CONFLICT (uuid) DO UPDATE SET
-          value       = EXCLUDED.value,
-          unit        = EXCLUDED.unit,
-          start_date  = EXCLUDED.start_date,
-          end_date    = EXCLUDED.end_date,
-          source_name = EXCLUDED.source_name,
-          metadata    = EXCLUDED.metadata,
-          deleted_at  = NULL
+          value                    = EXCLUDED.value,
+          unit                     = EXCLUDED.unit,
+          start_date               = EXCLUDED.start_date,
+          end_date                 = EXCLUDED.end_date,
+          source_name              = EXCLUDED.source_name,
+          metadata                 = EXCLUDED.metadata,
+          workout_activity_type_id = EXCLUDED.workout_activity_type_id,
+          workout_activity_name    = EXCLUDED.workout_activity_name,
+          workout_duration_seconds = EXCLUDED.workout_duration_seconds,
+          workout_energy_kcal      = EXCLUDED.workout_energy_kcal,
+          workout_distance_m       = EXCLUDED.workout_distance_m,
+          deleted_at               = NULL
       `;
       received = result.count;
 
