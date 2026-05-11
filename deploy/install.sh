@@ -261,6 +261,7 @@ BEGIN
 END \$\$;
 GRANT health_ingest_role TO ingest_user;
 GRANT health_read_role   TO read_user;
+GRANT gym_writer_role    TO gym_writer_user;
 SQL
 fi
 
