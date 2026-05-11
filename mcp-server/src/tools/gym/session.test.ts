@@ -54,3 +54,38 @@ describe('startSession + currentSession', () => {
     expect(r2.session_id).toBe(r1.session_id);
   });
 });
+
+describe('finishSession', () => {
+  it('sets ended_at, rating, notes and returns a summary', async () => {
+    const gym = await createGym(writePool, { slug: 'g', display_name: 'G' });
+    const ex  = await adminPool.query<{ id: number }>(
+      `INSERT INTO exercises (slug, display_name, primary_muscle, equipment_class)
+       VALUES ('row', 'Row', 'lats', 'cable') RETURNING id`
+    );
+    const start = await startSession(writePool, { session_uuid: randomUUID(), gym_id: gym.row.id, type: 'pull' });
+    // seed one set
+    const te = await adminPool.query<{ id: number }>(
+      `INSERT INTO training_exercises (uuid, session_id, exercise_id, position)
+       VALUES ('te-1', $1, $2, 1) RETURNING id`,
+      [start.session_id, ex.rows[0].id]
+    );
+    await adminPool.query(
+      `INSERT INTO training_sets (uuid, training_exercise_id, set_index, reps, weight_kg)
+       VALUES ('st-1', $1, 1, 10, 50)`,
+      [te.rows[0].id]
+    );
+
+    const r = await finishSession(writePool, { session_id: start.session_id, rating: 7, notes: 'felt good' });
+    expect(r.summary.total_sets).toBe(1);
+    expect(r.summary.total_volume_kg).toBe(500);
+    expect(r.summary.rating).toBe(7);
+    expect(r.summary.ended_at).not.toBeNull();
+  });
+
+  it('refuses to finish an already-finished session', async () => {
+    const gym = await createGym(writePool, { slug: 'g', display_name: 'G' });
+    const start = await startSession(writePool, { session_uuid: randomUUID(), gym_id: gym.row.id, type: 'pull' });
+    await finishSession(writePool, { session_id: start.session_id });
+    await expect(finishSession(writePool, { session_id: start.session_id })).rejects.toThrow(/already finished/i);
+  });
+});

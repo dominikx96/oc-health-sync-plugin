@@ -72,7 +72,78 @@ export async function currentSession(pool: Pool): Promise<{ row: SessionRow | nu
   return { row: r.rows[0] ?? null };
 }
 
-// finishSession is implemented in Task 11.
-export async function finishSession(_pool: Pool, _input: unknown): Promise<unknown> {
-  throw new Error('not implemented');
+export interface FinishSessionInput {
+  session_id: number;
+  rating?: number;
+  notes?: string;
+  ended_at?: string;
+}
+export interface FinishSessionResult {
+  summary: {
+    session_id: number;
+    started_at: Date;
+    ended_at: Date;
+    rating: number | null;
+    total_sets: number;
+    total_volume_kg: number;
+  }
+}
+
+export async function finishSession(pool: Pool, input: FinishSessionInput): Promise<FinishSessionResult> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const status = await client.query<{ ended_at: Date | null }>(
+      `SELECT ended_at FROM training_sessions WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [input.session_id]
+    );
+    if (!status.rows[0]) {
+      await client.query('ROLLBACK');
+      throw new Error(`session ${input.session_id} not found`);
+    }
+    if (status.rows[0].ended_at) {
+      await client.query('ROLLBACK');
+      throw new Error(`session ${input.session_id} already finished`);
+    }
+
+    const upd = await client.query<{ id: string; started_at: Date; ended_at: Date; rating: number | null }>(
+      `UPDATE training_sessions
+          SET ended_at = COALESCE($2::timestamptz, now()),
+              rating   = COALESCE($3, rating),
+              notes    = CASE WHEN $4::text IS NULL THEN notes
+                              WHEN notes IS NULL THEN $4
+                              ELSE notes || E'\n' || $4 END
+        WHERE id = $1
+        RETURNING id, started_at, ended_at, rating`,
+      [input.session_id, input.ended_at ?? null, input.rating ?? null, input.notes ?? null]
+    );
+
+    const totals = await client.query<{ total_sets: string; total_volume_kg: string }>(
+      `SELECT COUNT(ts.id)                                              AS total_sets,
+              COALESCE(SUM(ts.weight_kg * ts.reps), 0)::float8           AS total_volume_kg
+         FROM training_exercises te
+         LEFT JOIN training_sets ts ON ts.training_exercise_id = te.id AND ts.deleted_at IS NULL
+        WHERE te.session_id = $1 AND te.deleted_at IS NULL`,
+      [input.session_id]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      summary: {
+        session_id:      Number(upd.rows[0].id),
+        started_at:      upd.rows[0].started_at,
+        ended_at:        upd.rows[0].ended_at,
+        rating:          upd.rows[0].rating,
+        total_sets:      Number(totals.rows[0].total_sets),
+        total_volume_kg: Number(totals.rows[0].total_volume_kg)
+      }
+    };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
