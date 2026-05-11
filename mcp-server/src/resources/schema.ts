@@ -8,7 +8,9 @@ export async function describeSchema(pool: Pool): Promise<string> {
     SELECT table_name, column_name, data_type
       FROM information_schema.columns
      WHERE table_schema = 'public'
-       AND table_name IN ('health_samples', 'device_state', 'summary_cache')
+       AND table_name IN ('health_samples','device_state','summary_cache',
+                   'exercises','gyms','gym_machines',
+                   'training_sessions','training_exercises','training_sets')
      ORDER BY table_name, ordinal_position
   `);
 
@@ -77,6 +79,38 @@ export async function describeSchema(pool: Pool): Promise<string> {
     '   AND workout_activity_type_id = 13',
     "   AND start_date >= now() - INTERVAL '6 months'",
     ' ORDER BY start_date DESC;',
+    '```',
+    '',
+    '## Gym helpers',
+    '',
+    "- `last_sessions_by_type(p_type TEXT, p_gym_id BIGINT)` — up to 2 rows: most-recent same-gym session of the given type, then most-recent other-gym session. Columns: session_id, gym_id, gym_slug, same_gym, started_at, ended_at, rating, total_sets, total_volume_kg, top_set (jsonb).",
+    "- `last_exercise_results(p_exercise_id BIGINT, p_current_gym_id BIGINT)` — same shape for a specific exercise. `sets` is a JSONB array of `{set_index, reps, weight_kg, rpe, is_warmup, notes}`.",
+    "- View `current_open_session` — exactly the open session row (or empty).",
+    '',
+    '## Gym example queries',
+    '',
+    '```sql',
+    '-- most recent push session at a gym',
+    "SELECT * FROM last_sessions_by_type('push', (SELECT id FROM gyms WHERE slug='fitfabric-wola'));",
+    '',
+    '-- weekly volume across all sessions',
+    "SELECT date_trunc('week', s.started_at)::date AS week,",
+    '       COALESCE(SUM(ts.weight_kg * ts.reps), 0) AS volume_kg',
+    '  FROM training_sessions s',
+    '  JOIN training_exercises te ON te.session_id = s.id AND te.deleted_at IS NULL',
+    '  JOIN training_sets ts      ON ts.training_exercise_id = te.id AND ts.deleted_at IS NULL',
+    ' WHERE s.deleted_at IS NULL AND s.ended_at IS NOT NULL',
+    ' GROUP BY 1 ORDER BY 1 DESC;',
+    '',
+    '-- cross-domain: average session rating vs HRV the prior night',
+    "SELECT s.rating,",
+    "       AVG(hs.value) FILTER (WHERE hs.data_type = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN')",
+    '  FROM training_sessions s',
+    "  LEFT JOIN health_samples hs ON hs.deleted_at IS NULL",
+    "   AND hs.start_date >= s.started_at - INTERVAL '24 hours'",
+    "   AND hs.start_date <  s.started_at",
+    ' WHERE s.deleted_at IS NULL AND s.rating IS NOT NULL',
+    ' GROUP BY s.rating ORDER BY s.rating;',
     '```'
   ].join('\n');
 }

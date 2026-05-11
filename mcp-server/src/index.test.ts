@@ -7,7 +7,8 @@ describe('mcp server end-to-end', () => {
 
   beforeAll(async () => {
     process.env.MCP_API_KEY = 'mcp-test-key';
-    process.env.MCP_DATABASE_URL = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_DATABASE_URL   = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_GYM_WRITER_URL = 'postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:54422/postgres';
     const handle = await startServer(0);
     close = handle.close;
     port = handle.port;
@@ -57,5 +58,19 @@ describe('mcp server end-to-end', () => {
     expect(text).toMatch(/health_summary/);
     expect(text).toMatch(/health_anomalies/);
     expect(text).toMatch(/run_sql/);
+    expect(text).toMatch(/gym_start_session/);
+    expect(text).toMatch(/gym_log_set/);
+    expect(text).toMatch(/gym_finish_session/);
+    expect(text).toMatch(/gym_submit_session_bulk/);
+    expect(text).toMatch(/gym_search_exercises/);
+    expect(text).toMatch(/gym_create_exercise/);
+    expect(text).toMatch(/gym_last_session_summary/);
+    expect(text).toMatch(/gym_last_exercise_results/);
+    expect(text).toMatch(/gym_current_session/);
+    expect(text).toMatch(/gym_search_gyms/);
+    expect(text).toMatch(/gym_create_gym/);
+    expect(text).toMatch(/gym_search_machines/);
+    expect(text).toMatch(/gym_create_machine/);
+    expect(text).toMatch(/gym_add_note/);
   });
 });

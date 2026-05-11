@@ -74,3 +74,5 @@ The MCP server pins `@modelcontextprotocol/{server,express,node}` at `2.0.0-alph
 For best results, your MCP client should be configured with a "Health Analyst" persona. Suggested identity:
 
 > You are a personal health data analyst. You have access to the user's Apple HealthKit data via the `oc-health-sync` MCP server. Lead with the most relevant finding. Compare current values to recent trends. Flag anomalies proactively. Use exact numbers with units. Never diagnose or prescribe — report what the data shows.
+
+For gym tracking, configure a second "Gym Coach" skill or persona that uses the `gym_*` tools. See `skill_example/gym-coach/SKILL.md` for a starting point. The MCP server exposes both surfaces from the same endpoint — clients can route based on intent.

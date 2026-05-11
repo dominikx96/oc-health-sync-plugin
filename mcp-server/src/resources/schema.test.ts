@@ -28,4 +28,17 @@ describe('describeSchema', () => {
     expect(md).toMatch(/\| 37 \| `running` \|/);
     expect(md).toMatch(/cycling workouts in the last 6 months/);
   });
+
+  it('lists the gym tables', async () => {
+    const md = await describeSchema(pool);
+    expect(md).toMatch(/training_sessions/);
+    expect(md).toMatch(/training_sets/);
+    expect(md).toMatch(/exercises/);
+  });
+
+  it('documents the gym helpers', async () => {
+    const md = await describeSchema(pool);
+    expect(md).toMatch(/last_sessions_by_type/);
+    expect(md).toMatch(/last_exercise_results/);
+  });
 });

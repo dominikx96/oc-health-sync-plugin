@@ -24,6 +24,7 @@ services:
       MCP_API_KEY: ${MCP_API_KEY}
       MCP_PORT: ${MCP_PORT}
       MCP_DATABASE_URL: ${MCP_DATABASE_URL}
+      MCP_GYM_WRITER_URL: ${MCP_GYM_WRITER_URL}
     ports:
       - "127.0.0.1:${MCP_PORT}:${MCP_PORT}"
     depends_on:

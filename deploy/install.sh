@@ -88,6 +88,7 @@ if [[ "$MODE" == "install" && ! -f .env ]]; then
   MCP_API_KEY="${MCP_API_KEY:-$(randhex 32)}"
   INGEST_USER_PASSWORD="${INGEST_USER_PASSWORD:-$(randhex 16)}"
   READ_USER_PASSWORD="${READ_USER_PASSWORD:-$(randhex 16)}"
+  GYM_WRITER_PASSWORD="${GYM_WRITER_PASSWORD:-$(randhex 16)}"
   ANON_KEY="${ANON_KEY:-$(generate_jwt "$JWT_SECRET" anon)}"
   SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY:-$(generate_jwt "$JWT_SECRET" service_role)}"
   MCP_PORT="${MCP_PORT:-3737}"
@@ -102,8 +103,10 @@ INGEST_API_KEY=$INGEST_API_KEY
 MCP_API_KEY=$MCP_API_KEY
 INGEST_USER_PASSWORD=$INGEST_USER_PASSWORD
 READ_USER_PASSWORD=$READ_USER_PASSWORD
+GYM_WRITER_PASSWORD=$GYM_WRITER_PASSWORD
 INGEST_DATABASE_URL=postgresql://ingest_user:$INGEST_USER_PASSWORD@db:5432/postgres
 MCP_DATABASE_URL=postgresql://read_user:$READ_USER_PASSWORD@db:5432/postgres
+MCP_GYM_WRITER_URL=postgresql://gym_writer_user:$GYM_WRITER_PASSWORD@db:5432/postgres
 MCP_PORT=$MCP_PORT
 EOF
   echo "→ Wrote $INSTALL_DIR/.env (mode 600)"
@@ -134,6 +137,7 @@ services:
       MCP_API_KEY: ${MCP_API_KEY}
       MCP_PORT: ${MCP_PORT}
       MCP_DATABASE_URL: ${MCP_DATABASE_URL}
+      MCP_GYM_WRITER_URL: ${MCP_GYM_WRITER_URL}
     ports:
       - "127.0.0.1:${MCP_PORT}:${MCP_PORT}"
     depends_on:
@@ -232,7 +236,7 @@ dc run --rm \
 
 # --- Install: create login users -----------------------------------------
 if [[ "$MODE" == "install" ]]; then
-  echo "→ Creating login users (ingest_user, read_user)"
+  echo "→ Creating login users (ingest_user, read_user, gym_writer_user)"
   docker exec -i \
     -e PGPASSWORD="${POSTGRES_PASSWORD}" \
     supabase-db \
@@ -249,9 +253,15 @@ BEGIN
   ELSE
     ALTER ROLE read_user WITH PASSWORD '${READ_USER_PASSWORD}';
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'gym_writer_user') THEN
+    CREATE ROLE gym_writer_user LOGIN PASSWORD '${GYM_WRITER_PASSWORD}' IN ROLE gym_writer_role;
+  ELSE
+    ALTER ROLE gym_writer_user WITH PASSWORD '${GYM_WRITER_PASSWORD}';
+  END IF;
 END \$\$;
 GRANT health_ingest_role TO ingest_user;
 GRANT health_read_role   TO read_user;
+GRANT gym_writer_role    TO gym_writer_user;
 SQL
 fi
 

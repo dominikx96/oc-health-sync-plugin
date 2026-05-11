@@ -49,7 +49,7 @@ If you must ship a migration that violates the rule, mark it explicitly in the r
 
 ## Local development
 
-See the top-level `README.md` for the local-dev loop with `supabase start`. The CI test set mirrors the local one — if `npm test`, `psql -f supabase/tests/*.test.sql`, and `deno test` all pass locally, CI will pass.
+See the top-level `README.md` for the local-dev loop with `supabase start`. The CI test set mirrors the local one — if `npm test`, `psql -f supabase/tests/*.test.sql`, and `deno test` all pass locally, CI will pass. The SQL test glob now includes `gym_schema.test.sql`, `gym_roles.test.sql`, and `gym_helpers.test.sql`, so gym schema, role-privilege, and helper-function tests run automatically as part of the loop.
 
 ## Branching
 
