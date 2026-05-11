@@ -48,7 +48,7 @@ Co-locating gym data with HealthKit data unlocks future cross-domain analysis (r
 | Skill split | New `gym-coach` skill, separate from `health-coach` | Sharp scope per skill; the model follows shorter skills more reliably. |
 | Units | kg canonical; agent converts lbs at input | Single store, no per-set unit column. |
 | Open-session uniqueness | Partial-unique index on `training_sessions((true)) WHERE ended_at IS NULL AND deleted_at IS NULL` | DB enforces "at most one open session"; `force=true` auto-finalizes a stale one. |
-| Roles | New `gym_writer` Postgres role for write tools; existing `read_user` granted SELECT on new tables | Defense in depth: write tools cannot accidentally write to `health_samples`; `run_sql` works on gym data. |
+| Roles | Two-layer pattern: `gym_writer_role` (NOLOGIN, created in migration) + `gym_writer_user` (LOGIN, created in seed.sql / install.sh); existing `health_read_role` granted SELECT on new tables | Defense in depth: write tools cannot accidentally write to `health_samples`; credentials stay out of migrations; `run_sql` works on gym data. |
 | Migration discipline | All additive, idempotent, nullable defaults; old MCP image continues to function against new schema | Repo rule from `CONTRIBUTING.md`. |
 
 ## Architecture
@@ -120,9 +120,17 @@ CREATE TABLE IF NOT EXISTS gym_machines (
   label         TEXT,                     -- gym's printed label
   notes         TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at    TIMESTAMPTZ,
-  UNIQUE (gym_id, exercise_id, manufacturer, model)
+  deleted_at    TIMESTAMPTZ
 );
+-- NULLs differ in plain UNIQUE; use a NULL-safe expression for the dedupe key.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gym_machines_identity
+  ON gym_machines (
+    gym_id,
+    exercise_id,
+    COALESCE(manufacturer, ''),
+    COALESCE(model, '')
+  )
+  WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS training_sessions (
   id          BIGSERIAL PRIMARY KEY,
@@ -136,9 +144,10 @@ CREATE TABLE IF NOT EXISTS training_sessions (
   source      TEXT NOT NULL DEFAULT 'live', -- 'live' | 'bulk'
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at  TIMESTAMPTZ,
-  CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
-  CHECK (type IN ('push','pull','legs','upper','lower','full','cardio','mobility','other')),
-  CHECK (source IN ('live','bulk'))
+  CONSTRAINT training_sessions_rating_chk   CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
+  CONSTRAINT training_sessions_temporal_chk CHECK (ended_at IS NULL OR ended_at >= started_at),
+  CONSTRAINT training_sessions_type_chk     CHECK (type IN ('push','pull','legs','upper','lower','full','cardio','mobility','other')),
+  CONSTRAINT training_sessions_source_chk   CHECK (source IN ('live','bulk'))
 );
 
 CREATE TABLE IF NOT EXISTS training_exercises (
@@ -150,8 +159,7 @@ CREATE TABLE IF NOT EXISTS training_exercises (
   position        INTEGER NOT NULL,
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at      TIMESTAMPTZ,
-  UNIQUE (session_id, position)
+  deleted_at      TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS training_sets (
@@ -169,9 +177,8 @@ CREATE TABLE IF NOT EXISTS training_sets (
   performed_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at            TIMESTAMPTZ,
-  CHECK (rpe IS NULL OR rpe BETWEEN 1 AND 10),
-  CHECK (reps IS NOT NULL OR duration_seconds IS NOT NULL OR distance_m IS NOT NULL),
-  UNIQUE (training_exercise_id, set_index)
+  CONSTRAINT training_sets_rpe_chk     CHECK (rpe IS NULL OR rpe BETWEEN 1 AND 10),
+  CONSTRAINT training_sets_measure_chk CHECK (reps IS NOT NULL OR duration_seconds IS NOT NULL OR distance_m IS NOT NULL)
 );
 ```
 
@@ -191,9 +198,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_one_open_session
   ON training_sessions ((true))
   WHERE deleted_at IS NULL AND ended_at IS NULL;
 
-CREATE INDEX IF NOT EXISTS idx_te_session    ON training_exercises (session_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_te_exercise   ON training_exercises (exercise_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_sets_te_idx   ON training_sets (training_exercise_id, set_index) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_te_session  ON training_exercises (session_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_te_exercise ON training_exercises (exercise_id) WHERE deleted_at IS NULL;
+-- Partial unique: position is unique within a session among non-deleted rows.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_te_session_position
+  ON training_exercises (session_id, position)
+  WHERE deleted_at IS NULL;
+
+-- Partial unique: set_index is unique within a training_exercise among non-deleted rows.
+-- (Replaces the dropped non-unique idx_sets_te_idx which was strictly dominated by this index.)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ts_exercise_setindex
+  ON training_sets (training_exercise_id, set_index)
+  WHERE deleted_at IS NULL;
 ```
 
 ### Set-returning helpers
@@ -242,29 +258,44 @@ CREATE OR REPLACE VIEW current_open_session AS
 
 ### Roles & grants
 
-A second migration creates the write role and extends the read role:
+A second migration creates the write role (NOLOGIN) and extends the read role. A LOGIN user is
+created out-of-band: `seed.sql` for local dev, `deploy/install.sh` for production.
 
 ```sql
+-- Migration 20260511000100_gym_roles.sql
+-- Creates the NOLOGIN role in an idempotent guard.
 DO $$ BEGIN
-  CREATE ROLE gym_writer LOGIN PASSWORD 'set-via-env';
-EXCEPTION WHEN duplicate_object THEN NULL;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'gym_writer_role') THEN
+    CREATE ROLE gym_writer_role NOLOGIN;
+  END IF;
 END $$;
 
 GRANT INSERT, UPDATE, SELECT
   ON exercises, gyms, gym_machines,
      training_sessions, training_exercises, training_sets
-  TO gym_writer;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gym_writer;
+  TO gym_writer_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gym_writer_role;
 
+-- Explicit revoke as defense-in-depth; gym writes must not touch health tables.
+REVOKE ALL ON health_samples FROM gym_writer_role;
+REVOKE ALL ON device_state   FROM gym_writer_role;
+REVOKE ALL ON summary_cache  FROM gym_writer_role;
+
+-- health_read_role gets SELECT on gym tables so run_sql works on them.
 GRANT SELECT
   ON exercises, gyms, gym_machines,
      training_sessions, training_exercises, training_sets,
      current_open_session
-  TO read_user;
+  TO health_read_role;
 GRANT EXECUTE ON FUNCTION last_sessions_by_type(TEXT, BIGINT),
                           last_exercise_results(BIGINT, BIGINT)
-  TO read_user;
+  TO health_read_role, gym_writer_role;
 ```
+
+The LOGIN user (`gym_writer_user`) is created separately so credentials stay out of migrations:
+
+- **Local dev (`supabase/seed.sql`):** `CREATE ROLE gym_writer_user LOGIN PASSWORD 'gym_writer_pw' IN ROLE gym_writer_role;`
+- **Production (`deploy/install.sh`):** equivalent `DO $$…$$` block using `${GYM_WRITER_PASSWORD}`, followed by `GRANT gym_writer_role TO gym_writer_user;`
 
 ## MCP surface
 
