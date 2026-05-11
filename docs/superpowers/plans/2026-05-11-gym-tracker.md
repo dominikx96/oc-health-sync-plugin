@@ -189,9 +189,6 @@ CREATE TABLE IF NOT EXISTS training_sets (
   CONSTRAINT training_sets_measure_chk CHECK (reps IS NOT NULL OR duration_seconds IS NOT NULL OR distance_m IS NOT NULL)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sets_te_idx
-  ON training_sets (training_exercise_id, set_index)
-  WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ts_exercise_setindex
   ON training_sets (training_exercise_id, set_index)
   WHERE deleted_at IS NULL;

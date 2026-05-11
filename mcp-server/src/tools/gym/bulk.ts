@@ -114,15 +114,14 @@ export async function submitSessionBulk(pool: Pool, raw: unknown): Promise<BulkR
     );
     const sessionId = Number(sIns.rows[0].id);
 
-    let totalSets   = 0;
-    let totalVolume = 0;
+    // Phase 1: resolve all machine references — collect every failure before throwing.
+    const machineErrors: string[] = [];
+    const resolvedMachineIds: (number | null)[] = [];
 
     for (let i = 0; i < payload.exercises.length; i++) {
       const ex         = payload.exercises[i];
       const exerciseId = exBySlug.get(ex.exercise_slug)!;
 
-      // Machine resolution: strict — must exist; no auto-creation.
-      let machineId: number | null = null;
       if (ex.machine) {
         const m = await client.query<{ id: string }>(
           `SELECT id FROM gym_machines
@@ -134,14 +133,32 @@ export async function submitSessionBulk(pool: Pool, raw: unknown): Promise<BulkR
           [gymId, exerciseId, ex.machine.manufacturer ?? null, ex.machine.model ?? null]
         );
         if (!m.rows[0]) {
-          await client.query('ROLLBACK');
-          throw new Error(
-            `unknown gym_machine for gym=${payload.gym_slug} exercise=${ex.exercise_slug} ` +
+          machineErrors.push(
+            `gym=${payload.gym_slug} exercise=${ex.exercise_slug} ` +
             `manufacturer=${ex.machine.manufacturer ?? 'NULL'} model=${ex.machine.model ?? 'NULL'}`
           );
+          resolvedMachineIds.push(null);
+        } else {
+          resolvedMachineIds.push(Number(m.rows[0].id));
         }
-        machineId = Number(m.rows[0].id);
+      } else {
+        resolvedMachineIds.push(null);
       }
+    }
+
+    if (machineErrors.length > 0) {
+      await client.query('ROLLBACK');
+      throw new Error(`unknown gym_machine(s): ${machineErrors.join('; ')}`);
+    }
+
+    // Phase 2: all machines resolved — do the actual INSERTs.
+    let totalSets   = 0;
+    let totalVolume = 0;
+
+    for (let i = 0; i < payload.exercises.length; i++) {
+      const ex         = payload.exercises[i];
+      const exerciseId = exBySlug.get(ex.exercise_slug)!;
+      const machineId  = resolvedMachineIds[i];
 
       // Insert training_exercises row.
       const teIns = await client.query<{ id: string }>(

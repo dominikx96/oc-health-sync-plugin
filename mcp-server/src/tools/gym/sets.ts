@@ -112,31 +112,34 @@ export async function addNote(pool: Pool, input: AddNoteInput): Promise<void> {
   }
 
   if (input.scope === 'session') {
-    await pool.query(
+    const r = await pool.query(
       `UPDATE training_sessions
           SET notes = CASE WHEN notes IS NULL THEN $2 ELSE notes || E'\n' || $2 END
         WHERE id = $1`,
       [input.session_id, input.text]
     );
+    if ((r.rowCount ?? 0) === 0) throw new Error('note target not found');
     return;
   }
 
   if (input.scope === 'exercise') {
-    await pool.query(
+    const r = await pool.query(
       `UPDATE training_exercises
           SET notes = CASE WHEN notes IS NULL THEN $2 ELSE notes || E'\n' || $2 END
         WHERE id = $1 AND session_id = $3`,
       [input.target_id, input.text, input.session_id]
     );
+    if ((r.rowCount ?? 0) === 0) throw new Error('note target not found');
     return;
   }
 
   // scope === 'set'
-  await pool.query(
+  const r = await pool.query(
     `UPDATE training_sets
         SET notes = CASE WHEN notes IS NULL THEN $2 ELSE notes || E'\n' || $2 END
       WHERE id = $1
         AND training_exercise_id IN (SELECT id FROM training_exercises WHERE session_id = $3)`,
     [input.target_id, input.text, input.session_id]
   );
+  if ((r.rowCount ?? 0) === 0) throw new Error('note target not found');
 }
