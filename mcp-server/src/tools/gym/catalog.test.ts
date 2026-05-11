@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { createPool } from '../../db.js';
-import { searchExercises, createExercise } from './catalog.js';
+import { searchExercises, createExercise, searchGyms, createGym, searchMachines, createMachine } from './catalog.js';
 
 const readPool = createPool(process.env.MCP_DATABASE_URL ?? 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres');
 const writePool = createPool(process.env.MCP_GYM_WRITER_URL ?? 'postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:54422/postgres');
@@ -67,5 +67,41 @@ describe('createExercise', () => {
     });
     expect(r.created).toBe(false);
     expect(r.row.slug).toBe('lat-pulldown');
+  });
+});
+
+describe('gyms', () => {
+  it('createGym + searchGyms', async () => {
+    const c = await createGym(writePool, { slug: 'fitfabric-wola', display_name: 'FitFabric Wola', city: 'Warsaw' });
+    expect(c.created).toBe(true);
+    const s = await searchGyms(readPool, { query: 'fit' });
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0].slug).toBe('fitfabric-wola');
+  });
+
+  it('createGym is idempotent on slug', async () => {
+    await createGym(writePool, { slug: 'precor', display_name: 'Precor' });
+    const r2 = await createGym(writePool, { slug: 'precor', display_name: 'Precor' });
+    expect(r2.created).toBe(false);
+  });
+});
+
+describe('machines', () => {
+  it('createMachine + searchMachines for a (gym, exercise)', async () => {
+    const gym = await createGym(writePool, { slug: 'g1', display_name: 'G1' });
+    const ex  = await createExercise(writePool, { slug: 'low-row', display_name: 'Low Row', primary_muscle: 'lats', equipment_class: 'machine' });
+    const m   = await createMachine(writePool, { gym_id: gym.row.id, exercise_id: ex.row.id, manufacturer: 'Technogym', model: 'Selection 700 Low Row' });
+    expect(m.created).toBe(true);
+    const s = await searchMachines(readPool, { gym_id: gym.row.id, exercise_id: ex.row.id });
+    expect(s.rows).toHaveLength(1);
+    expect(s.rows[0].manufacturer).toBe('Technogym');
+  });
+
+  it('createMachine is idempotent on (gym, exercise, manufacturer, model) — including NULLs', async () => {
+    const gym = await createGym(writePool, { slug: 'g2', display_name: 'G2' });
+    const ex  = await createExercise(writePool, { slug: 'pec-deck', display_name: 'Pec Deck', primary_muscle: 'chest', equipment_class: 'machine' });
+    await createMachine(writePool, { gym_id: gym.row.id, exercise_id: ex.row.id });
+    const r2 = await createMachine(writePool, { gym_id: gym.row.id, exercise_id: ex.row.id });
+    expect(r2.created).toBe(false);
   });
 });
