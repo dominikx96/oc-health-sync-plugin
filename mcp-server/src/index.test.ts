@@ -58,5 +58,14 @@ describe('mcp server end-to-end', () => {
     expect(text).toMatch(/health_summary/);
     expect(text).toMatch(/health_anomalies/);
     expect(text).toMatch(/run_sql/);
+    expect(text).toMatch(/gym_start_session/);
+    expect(text).toMatch(/gym_log_set/);
+    expect(text).toMatch(/gym_finish_session/);
+    expect(text).toMatch(/gym_submit_session_bulk/);
+    expect(text).toMatch(/gym_search_exercises/);
+    expect(text).toMatch(/gym_create_exercise/);
+    expect(text).toMatch(/gym_last_session_summary/);
+    expect(text).toMatch(/gym_last_exercise_results/);
+    expect(text).toMatch(/gym_current_session/);
   });
 });
