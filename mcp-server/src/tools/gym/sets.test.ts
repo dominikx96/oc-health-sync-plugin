@@ -75,4 +75,12 @@ describe('addNote', () => {
     const r = await adminPool.query<{ notes: string }>(`SELECT notes FROM training_sets WHERE id = $1`, [s.set_id]);
     expect(r.rows[0].notes).toBe('shoulder twinge');
   });
+
+  it('throws when target_id refers to a row that does not exist or is in another session', async () => {
+    const { session_id } = await freshSession();
+    // wrong target_id for exercise scope
+    await expect(addNote(writePool, {
+      session_id, scope: 'exercise', target_id: 999_999, text: 'oops'
+    })).rejects.toThrow(/note target not found/i);
+  });
 });
