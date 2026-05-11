@@ -112,6 +112,31 @@ EOF
   echo "→ Wrote $INSTALL_DIR/.env (mode 600)"
 fi
 
+# --- Upgrade: backfill env vars added in newer releases -------------------
+# .env is generated once on first install. New releases can introduce new
+# required vars (e.g. MCP_GYM_WRITER_URL in v0.3.0). On upgrade we detect
+# missing keys and append them with generated defaults; the user-provisioning
+# psql block below then creates/syncs the corresponding DB role.
+if [[ "$MODE" == "upgrade" && -f .env ]]; then
+  append_env() {
+    local key="$1" value="$2"
+    if ! grep -q "^${key}=" .env; then
+      echo "→ Backfilling ${key} in .env"
+      printf '%s=%s\n' "${key}" "${value}" >> .env
+      if [[ -f "${SUPABASE_DIR}/.env" ]] && ! grep -q "^${key}=" "${SUPABASE_DIR}/.env"; then
+        printf '%s=%s\n' "${key}" "${value}" >> "${SUPABASE_DIR}/.env"
+      fi
+    fi
+  }
+  # v0.3.0 — gym writer credentials.
+  if ! grep -q '^GYM_WRITER_PASSWORD=' .env; then
+    append_env "GYM_WRITER_PASSWORD" "$(randhex 16)"
+  fi
+  _gym_writer_pw="$(grep '^GYM_WRITER_PASSWORD=' .env | head -1 | cut -d= -f2-)"
+  append_env "MCP_GYM_WRITER_URL" "postgresql://gym_writer_user:${_gym_writer_pw}@db:5432/postgres"
+  unset _gym_writer_pw
+fi
+
 # --- Load env --------------------------------------------------------------
 [[ -f .env ]] || { echo "FATAL: .env not found in $INSTALL_DIR" >&2; exit 1; }
 set -a
@@ -234,13 +259,15 @@ dc run --rm \
   --entrypoint /usr/local/bin/migrate \
   mcp
 
-# --- Install: create login users -----------------------------------------
-if [[ "$MODE" == "install" ]]; then
-  echo "→ Creating login users (ingest_user, read_user, gym_writer_user)"
-  docker exec -i \
-    -e PGPASSWORD="${POSTGRES_PASSWORD}" \
-    supabase-db \
-    psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<SQL
+# --- Provision login users (idempotent — runs on install AND upgrade) -----
+# Runs on both modes so a release that adds a new login user (like
+# gym_writer_user in v0.3.0) self-heals existing installs. The CREATE/ALTER
+# fork is a no-op on re-runs when the password in .env hasn't changed.
+echo "→ Provisioning login users (ingest_user, read_user, gym_writer_user)"
+docker exec -i \
+  -e PGPASSWORD="${POSTGRES_PASSWORD}" \
+  supabase-db \
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ingest_user') THEN
@@ -263,7 +290,6 @@ GRANT health_ingest_role TO ingest_user;
 GRANT health_read_role   TO read_user;
 GRANT gym_writer_role    TO gym_writer_user;
 SQL
-fi
 
 # --- Sync edge function code from image to host volume -------------------
 echo "→ Syncing edge function code"
