@@ -7,7 +7,8 @@ describe('mcp server end-to-end', () => {
 
   beforeAll(async () => {
     process.env.MCP_API_KEY = 'mcp-test-key';
-    process.env.MCP_DATABASE_URL = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_DATABASE_URL   = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_GYM_WRITER_URL = 'postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:54422/postgres';
     const handle = await startServer(0);
     close = handle.close;
     port = handle.port;

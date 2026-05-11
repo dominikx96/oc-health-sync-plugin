@@ -12,7 +12,8 @@ import { healthAnomalies } from './tools/health-anomalies.js';
 import { runSql } from './tools/run-sql.js';
 import { describeSchema } from './resources/schema.js';
 
-function buildMcp(pool: Pool): McpServer {
+function buildMcp(readPool: Pool, writePool: Pool): McpServer {
+  void writePool; // unused until gym tool registrations are appended in later tasks
   const server = new McpServer({ name: 'oc-health-sync', version: '0.1.0' });
 
   server.registerTool(
@@ -25,7 +26,7 @@ function buildMcp(pool: Pool): McpServer {
         tz:     z.string().optional()
       })
     },
-    async (input) => ({ content: [{ type: 'text', text: await healthSummary(pool, input) }] })
+    async (input) => ({ content: [{ type: 'text', text: await healthSummary(readPool, input) }] })
   );
 
   server.registerTool(
@@ -34,7 +35,7 @@ function buildMcp(pool: Pool): McpServer {
       description: 'Detected anomalies in the trailing window (default 14 days).',
       inputSchema: z.object({ window_days: z.number().int().positive().optional() })
     },
-    async (input) => ({ content: [{ type: 'text', text: await healthAnomalies(pool, input) }] })
+    async (input) => ({ content: [{ type: 'text', text: await healthAnomalies(readPool, input) }] })
   );
 
   server.registerTool(
@@ -44,7 +45,7 @@ function buildMcp(pool: Pool): McpServer {
       inputSchema: z.object({ query: z.string().min(1) })
     },
     async (input) => {
-      const result = await runSql(pool, input);
+      const result = await runSql(readPool, input);
       return { content: [{ type: 'text', text: JSON.stringify(result.rows, null, 2) }] };
     }
   );
@@ -54,9 +55,11 @@ function buildMcp(pool: Pool): McpServer {
     'schema://tables',
     { description: 'Database schema summary and example queries.', mimeType: 'text/markdown' },
     async () => ({
-      contents: [{ uri: 'schema://tables', mimeType: 'text/markdown', text: await describeSchema(pool) }]
+      contents: [{ uri: 'schema://tables', mimeType: 'text/markdown', text: await describeSchema(readPool) }]
     })
   );
+
+  // Gym tool registrations will be appended in later tasks.
 
   return server;
 }
@@ -67,9 +70,12 @@ export interface ServerHandle {
 }
 
 export async function startServer(requestedPort: number): Promise<ServerHandle> {
-  const dsn = process.env.MCP_DATABASE_URL;
-  if (!dsn) throw new Error('MCP_DATABASE_URL is not set');
-  const pool = createPool(dsn);
+  const readDsn  = process.env.MCP_DATABASE_URL;
+  const writeDsn = process.env.MCP_GYM_WRITER_URL;
+  if (!readDsn)  throw new Error('MCP_DATABASE_URL is not set');
+  if (!writeDsn) throw new Error('MCP_GYM_WRITER_URL is not set');
+  const readPool  = createPool(readDsn);
+  const writePool = createPool(writeDsn);
 
   // createMcpExpressApp defaults to 127.0.0.1 with DNS rebinding protection;
   // pass host '0.0.0.0' so tests can bind to any port without DNS validation errors.
@@ -92,7 +98,7 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
         if (transport!.sessionId) transports.delete(transport!.sessionId);
       };
       // Each session gets its own McpServer so tools/resources are independent.
-      const mcp = buildMcp(pool);
+      const mcp = buildMcp(readPool, writePool);
       await mcp.connect(transport);
     }
 
@@ -113,7 +119,8 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
     close: async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       for (const t of transports.values()) await t.close();
-      await pool.end();
+      await readPool.end();
+      await writePool.end();
     }
   };
 }
