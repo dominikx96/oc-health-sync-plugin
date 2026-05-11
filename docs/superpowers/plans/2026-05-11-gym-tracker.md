@@ -135,9 +135,10 @@ CREATE TABLE IF NOT EXISTS training_sessions (
   source      TEXT NOT NULL DEFAULT 'live',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at  TIMESTAMPTZ,
-  CONSTRAINT training_sessions_rating_chk CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
-  CONSTRAINT training_sessions_type_chk   CHECK (type IN ('push','pull','legs','upper','lower','full','cardio','mobility','other')),
-  CONSTRAINT training_sessions_source_chk CHECK (source IN ('live','bulk'))
+  CONSTRAINT training_sessions_rating_chk   CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
+  CONSTRAINT training_sessions_temporal_chk CHECK (ended_at IS NULL OR ended_at >= started_at),
+  CONSTRAINT training_sessions_type_chk     CHECK (type IN ('push','pull','legs','upper','lower','full','cardio','mobility','other')),
+  CONSTRAINT training_sessions_source_chk   CHECK (source IN ('live','bulk'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_gym_type_started
@@ -160,12 +161,14 @@ CREATE TABLE IF NOT EXISTS training_exercises (
   position        INTEGER NOT NULL,
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at      TIMESTAMPTZ,
-  UNIQUE (session_id, position)
+  deleted_at      TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_te_session  ON training_exercises (session_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_te_exercise ON training_exercises (exercise_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_te_session_position
+  ON training_exercises (session_id, position)
+  WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS training_sets (
   id                    BIGSERIAL PRIMARY KEY,
@@ -183,11 +186,13 @@ CREATE TABLE IF NOT EXISTS training_sets (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at            TIMESTAMPTZ,
   CONSTRAINT training_sets_rpe_chk     CHECK (rpe IS NULL OR rpe BETWEEN 1 AND 10),
-  CONSTRAINT training_sets_measure_chk CHECK (reps IS NOT NULL OR duration_seconds IS NOT NULL OR distance_m IS NOT NULL),
-  UNIQUE (training_exercise_id, set_index)
+  CONSTRAINT training_sets_measure_chk CHECK (reps IS NOT NULL OR duration_seconds IS NOT NULL OR distance_m IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sets_te_idx
+  ON training_sets (training_exercise_id, set_index)
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ts_exercise_setindex
   ON training_sets (training_exercise_id, set_index)
   WHERE deleted_at IS NULL;
 
