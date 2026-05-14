@@ -21,3 +21,6 @@ END $$;
 GRANT TRUNCATE ON exercises, gyms, gym_machines,
                   training_sessions, training_exercises, training_sets
   TO gym_writer_user;
+
+-- daily_logs is owned (writes) by gym_writer_role; allow the local-dev login to TRUNCATE.
+GRANT TRUNCATE ON daily_logs TO gym_writer_user;
