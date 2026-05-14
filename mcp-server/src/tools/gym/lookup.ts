@@ -36,7 +36,7 @@ export interface LastExerciseRow {
   gym_slug: string;
   same_gym: boolean;
   performed_at: Date;
-  sets: Array<{ set_index: number; reps: number | null; weight_kg: number | null; rpe: number | null; is_warmup: boolean; notes: string | null }>;
+  sets: Array<{ set_index: number; reps: number | null; weight_kg: number | null; rpe: number | null; is_warmup: boolean; without_break: boolean; notes: string | null }>;
 }
 
 export async function lastExerciseResults(

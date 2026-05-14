@@ -12,6 +12,7 @@ export interface LogSetInput {
   distance_m?: number;
   rpe?: number;
   is_warmup?: boolean;
+  without_break?: boolean;
   notes?: string;
   performed_at?: string;
   set_index?: number;
@@ -77,14 +78,15 @@ export async function logSet(pool: Pool, input: LogSetInput): Promise<LogSetResu
 
     const setIns = await client.query<{ id: string }>(
       `INSERT INTO training_sets
-         (uuid, training_exercise_id, set_index, reps, weight_kg, duration_seconds, distance_m, rpe, is_warmup, notes, performed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, false), $10, COALESCE($11::timestamptz, now()))
+         (uuid, training_exercise_id, set_index, reps, weight_kg, duration_seconds, distance_m, rpe, is_warmup, without_break, notes, performed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, false), COALESCE($10, false), $11, COALESCE($12::timestamptz, now()))
        RETURNING id`,
       [
         input.set_uuid, teId, setIndex,
         input.reps ?? null, input.weight_kg ?? null,
         input.duration_seconds ?? null, input.distance_m ?? null,
         input.rpe ?? null, input.is_warmup ?? null,
+        input.without_break ?? null,
         input.notes ?? null, input.performed_at ?? null
       ]
     );

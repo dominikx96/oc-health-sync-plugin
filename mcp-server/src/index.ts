@@ -16,6 +16,7 @@ import { startSession, currentSession, finishSession } from './tools/gym/session
 import { logSet, addNote } from './tools/gym/sets.js';
 import { lastSessionSummary, lastExerciseResults } from './tools/gym/lookup.js';
 import { submitSessionBulk } from './tools/gym/bulk.js';
+import { healthLogDay } from './tools/health-log-day.js';
 
 function buildMcp(readPool: Pool, writePool: Pool): McpServer {
   const server = new McpServer({ name: 'oc-health-sync', version: '0.1.0' });
@@ -146,6 +147,7 @@ function buildMcp(readPool: Pool, writePool: Pool): McpServer {
         distance_m: z.number().optional(),
         rpe: z.number().int().min(1).max(10).optional(),
         is_warmup: z.boolean().optional(),
+        without_break: z.boolean().optional(),
         notes: z.string().optional(),
         performed_at: z.string().optional(),
         set_index: z.number().int().positive().optional()
@@ -207,12 +209,25 @@ function buildMcp(readPool: Pool, writePool: Pool): McpServer {
             distance_m:       z.number().optional(),
             rpe:              z.number().int().min(1).max(10).optional(),
             is_warmup:        z.boolean().optional(),
+            without_break:    z.boolean().optional(),
             notes:            z.string().nullable().optional(),
             performed_at:     z.string().optional()
           })).min(1)
         })).min(1)
       }) },
     async (i) => text(await submitSessionBulk(writePool, i))
+  );
+
+  // --- Daily lifestyle log -------------------------------------------
+  server.registerTool('health_log_day',
+    { description: 'Upsert today\'s lifestyle log (alcohol y/n, free-text notes). One row per local day. Omitted fields are preserved on update.',
+      inputSchema: z.object({
+        date:    z.string().optional(),
+        tz:      z.string().optional(),
+        alcohol: z.boolean().optional(),
+        notes:   z.string().optional()
+      }) },
+    async (i) => text(await healthLogDay(writePool, i))
   );
 
   return server;

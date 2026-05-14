@@ -67,4 +67,32 @@ describe('submitSessionBulk', () => {
 
     await expect(submitSessionBulk(writePool, payload)).rejects.toThrow(/Technogym.*Precor|Precor.*Technogym/i);
   });
+
+  it('persists without_break on bulk-imported sets', async () => {
+    await adminPool.query(`INSERT INTO gyms (slug, display_name) VALUES ('fitfabric-wola', 'FitFabric Wola')`);
+    await adminPool.query(`INSERT INTO exercises (slug, display_name, primary_muscle, equipment_class) VALUES ('seated-cable-row', 'Seated Cable Row', 'lats', 'cable')`);
+
+    const payload = {
+      session_uuid: '11111111-1111-1111-1111-111111111111',
+      gym_slug: 'fitfabric-wola',
+      type: 'pull',
+      started_at: '2026-05-14T17:30:00Z',
+      ended_at:   '2026-05-14T18:45:00Z',
+      exercises: [{
+        exercise_slug: 'seated-cable-row',
+        exercise_uuid: '11111111-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        sets: [
+          { set_uuid: 'b-1', reps: 10, weight_kg: 50 },                          // default false
+          { set_uuid: 'b-2', reps: 8,  weight_kg: 55, without_break: true }      // explicit true
+        ]
+      }]
+    };
+
+    await submitSessionBulk(writePool, payload);
+    const r = await adminPool.query<{ uuid: string; without_break: boolean }>(
+      `SELECT uuid, without_break FROM training_sets WHERE uuid IN ('b-1', 'b-2') ORDER BY uuid`
+    );
+    expect(r.rows[0]).toEqual({ uuid: 'b-1', without_break: false });
+    expect(r.rows[1]).toEqual({ uuid: 'b-2', without_break: true });
+  });
 });

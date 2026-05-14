@@ -57,6 +57,23 @@ describe('logSet', () => {
       session_id, exercise_id: ex.row.id, set_uuid: randomUUID()
     })).rejects.toThrow(/measurement/i);
   });
+
+  it('persists without_break=true and defaults to false when omitted', async () => {
+    const { ex, session_id } = await freshSession();
+    const a = await logSet(writePool, {
+      session_id, exercise_id: ex.row.id, set_uuid: randomUUID(), reps: 10, weight_kg: 50
+    });
+    const b = await logSet(writePool, {
+      session_id, training_exercise_id: a.training_exercise_id, set_uuid: randomUUID(),
+      reps: 8, weight_kg: 55, without_break: true
+    });
+    const r = await adminPool.query<{ id: number; without_break: boolean }>(
+      `SELECT id, without_break FROM training_sets WHERE id IN ($1, $2) ORDER BY id`,
+      [a.set_id, b.set_id]
+    );
+    expect(r.rows[0].without_break).toBe(false);
+    expect(r.rows[1].without_break).toBe(true);
+  });
 });
 
 describe('addNote', () => {

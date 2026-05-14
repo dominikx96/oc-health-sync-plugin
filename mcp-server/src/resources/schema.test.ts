@@ -41,4 +41,12 @@ describe('describeSchema', () => {
     expect(md).toMatch(/last_sessions_by_type/);
     expect(md).toMatch(/last_exercise_results/);
   });
+
+  it('lists daily_logs and exposes the without_break column on training_sets', async () => {
+    const md = await describeSchema(pool);
+    expect(md).toMatch(/daily_logs/);
+    expect(md).toMatch(/`alcohol`/);
+    expect(md).toMatch(/`without_break`/);
+    expect(md).toMatch(/health_log_day/);  // mentioned in the prose section
+  });
 });

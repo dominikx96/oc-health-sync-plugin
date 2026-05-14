@@ -39,8 +39,8 @@ BEGIN
     RETURNING id INTO s_recent_mok_id;
   INSERT INTO training_exercises (uuid, session_id, exercise_id, position)
     VALUES ('te-mok-recent', s_recent_mok_id, ex_id, 1) RETURNING id INTO te_recent;
-  INSERT INTO training_sets (uuid, training_exercise_id, set_index, reps, weight_kg, rpe)
-    VALUES ('st-mok-1', te_recent, 1, 10, 60, 8);
+  INSERT INTO training_sets (uuid, training_exercise_id, set_index, reps, weight_kg, rpe, without_break)
+    VALUES ('st-mok-1', te_recent, 1, 10, 60, 8, true);
 
   -- last_sessions_by_type from the perspective of Wola
   FOR r IN
@@ -75,8 +75,18 @@ BEGIN
       IF jsonb_array_length(r.sets) <> 2 THEN
         RAISE EXCEPTION 'expected 2 sets on same-gym row, got %', jsonb_array_length(r.sets);
       END IF;
+      -- Every set object must carry the without_break key (default false on these).
+      IF NOT (r.sets -> 0 ? 'without_break') THEN
+        RAISE EXCEPTION 'expected without_break key in same-gym sets[0], got %', r.sets -> 0;
+      END IF;
+      IF (r.sets -> 0 ->> 'without_break')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'expected without_break=false on default set, got %', r.sets -> 0;
+      END IF;
     ELSIF rows_seen = 2 THEN
       IF r.same_gym THEN RAISE EXCEPTION 'second row should be other-gym'; END IF;
+      IF (r.sets -> 0 ->> 'without_break')::boolean IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'expected without_break=true on Mokotów set, got %', r.sets -> 0;
+      END IF;
     END IF;
   END LOOP;
   IF rows_seen <> 2 THEN RAISE EXCEPTION 'expected 2 rows from last_exercise_results, got %', rows_seen; END IF;

@@ -63,6 +63,28 @@ BEGIN
   INSERT INTO training_sets (uuid, training_exercise_id, set_index, reps)
     VALUES ('st-ok', te_id, 1, 10);
 
+  -- 4b. without_break is BOOLEAN NOT NULL; default-false applies to new rows;
+  -- explicit true round-trips. (We don't assert column_default's text form — it
+  -- varies by Postgres version. The behavioral check below is what matters.)
+  PERFORM 1 FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'training_sets'
+     AND column_name = 'without_break' AND data_type = 'boolean' AND is_nullable = 'NO';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'expected without_break BOOLEAN NOT NULL on training_sets';
+  END IF;
+
+  -- Default-false applies to a row inserted without the column.
+  IF (SELECT without_break FROM training_sets WHERE uuid = 'st-ok') IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'expected without_break default false on st-ok, got %', (SELECT without_break FROM training_sets WHERE uuid = 'st-ok');
+  END IF;
+
+  -- Explicit true is stored.
+  INSERT INTO training_sets (uuid, training_exercise_id, set_index, reps, without_break)
+    VALUES ('st-no-break', te_id, 2, 8, true);
+  IF (SELECT without_break FROM training_sets WHERE uuid = 'st-no-break') IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'expected without_break=true on st-no-break, got %', (SELECT without_break FROM training_sets WHERE uuid = 'st-no-break');
+  END IF;
+
   -- 5. gym_machines NULL-safe uniqueness
   INSERT INTO gym_machines (gym_id, exercise_id, manufacturer, model)
     VALUES (gym_id_v, ex_id, NULL, NULL);
