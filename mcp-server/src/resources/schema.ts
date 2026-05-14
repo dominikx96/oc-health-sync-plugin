@@ -8,7 +8,7 @@ export async function describeSchema(pool: Pool): Promise<string> {
     SELECT table_name, column_name, data_type
       FROM information_schema.columns
      WHERE table_schema = 'public'
-       AND table_name IN ('health_samples','device_state','summary_cache',
+       AND table_name IN ('health_samples','device_state','summary_cache','daily_logs',
                    'exercises','gyms','gym_machines',
                    'training_sessions','training_exercises','training_sets')
      ORDER BY table_name, ordinal_position
@@ -111,6 +111,28 @@ export async function describeSchema(pool: Pool): Promise<string> {
     "   AND hs.start_date <  s.started_at",
     ' WHERE s.deleted_at IS NULL AND s.rating IS NOT NULL',
     ' GROUP BY s.rating ORDER BY s.rating;',
+    '```',
+    '',
+    '## Daily lifestyle log',
+    '',
+    '`daily_logs` — one row per local day. `day` is the local date in `tz`. `alcohol` is `NULL` until logged, then `true` / `false`. `notes` is last-write-wins. Upsert via the `health_log_day` MCP tool; `run_sql` is read-only on this table.',
+    '',
+    '## Training-set continuity',
+    '',
+    '`training_sets.without_break = true` marks a set performed immediately after the previous one with no rest (drop set, rest-pause, "one more"). Default `false`. Combine with decreasing `weight_kg` in a query to identify drop sets specifically.',
+    '',
+    '## Daily-log example queries',
+    '',
+    '```sql',
+    '-- alcohol days in the last 30, with HRV the next morning',
+    'SELECT dl.day, dl.alcohol,',
+    "       AVG(hs.value) FILTER (WHERE hs.data_type = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN') AS hrv_next_morning",
+    '  FROM daily_logs dl',
+    "  LEFT JOIN health_samples hs ON hs.deleted_at IS NULL",
+    "   AND (hs.start_date AT TIME ZONE dl.tz)::date = dl.day + INTERVAL '1 day'",
+    " WHERE dl.day >= current_date - INTERVAL '30 days'",
+    ' GROUP BY dl.day, dl.alcohol',
+    ' ORDER BY dl.day DESC;',
     '```'
   ].join('\n');
 }
