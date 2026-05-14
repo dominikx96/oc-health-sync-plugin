@@ -84,7 +84,7 @@ export async function describeSchema(pool: Pool): Promise<string> {
     '## Gym helpers',
     '',
     "- `last_sessions_by_type(p_type TEXT, p_gym_id BIGINT)` — up to 2 rows: most-recent same-gym session of the given type, then most-recent other-gym session. Columns: session_id, gym_id, gym_slug, same_gym, started_at, ended_at, rating, total_sets, total_volume_kg, top_set (jsonb).",
-    "- `last_exercise_results(p_exercise_id BIGINT, p_current_gym_id BIGINT)` — same shape for a specific exercise. `sets` is a JSONB array of `{set_index, reps, weight_kg, rpe, is_warmup, notes}`.",
+    "- `last_exercise_results(p_exercise_id BIGINT, p_current_gym_id BIGINT)` — same shape for a specific exercise. `sets` is a JSONB array of `{set_index, reps, weight_kg, rpe, is_warmup, without_break, notes}`.",
     "- View `current_open_session` — exactly the open session row (or empty).",
     '',
     '## Gym example queries',
