@@ -40,8 +40,7 @@ Both changes follow the existing migration discipline (additive, idempotent, nul
 | `alcohol` nullability | `BOOLEAN NULL` (no default) | `NULL` = not logged, `false` = explicitly sober, `true` = drank. Required to distinguish "didn't log" from "logged false". |
 | Table name | `daily_logs` (generic) | Future booleans (`took_meds`, `period_day`, etc.) drop in as ALTER TABLE without renaming or migrating. |
 | `notes` shape | Single `TEXT` column, last-write-wins on upsert | Same pattern as `training_sessions.notes`; the table is small and the conversation can read+rewrite if append semantics are needed. |
-| Write path for `daily_logs` | New MCP tool `health_log_day` doing upsert | Established pattern (dedicated tools for writes, `run_sql` for reads); keeps role separation clean. |
-| Write role for `daily_logs` | `health_ingest_role` | Already has INSERT/UPDATE on health tables; no new role required. |
+| Write path for `daily_logs` | New MCP tool `health_log_day` doing upsert, routed through the existing `writePool` (`gym_writer_role`) | Established pattern (dedicated tools for writes, `run_sql` for reads). The user explicitly accepted role-domain mixing here to avoid introducing a third pool, login role, and env var. `gym_writer_role` becomes the MCP server's general-purpose writer; the explicit revoke against `health_samples` / `device_state` / `summary_cache` in `20260511000100_gym_roles.sql` still holds, so we are widening it only by one new table. |
 | Read role for `daily_logs` | `health_read_role` (SELECT) | Inherited via `ALTER DEFAULT PRIVILEGES` in `20260507000100_roles.sql`; explicit GRANT is added defensively in the new migration. |
 | Schema resource exposure | Add `'daily_logs'` to the table allowlist in `resources/schema.ts` and add a short prose section describing it | Column introspection is automatic; the prose section signals intent and shows example writes. |
 | `without_break` shape | `BOOLEAN NOT NULL DEFAULT false` on `training_sets` | Exact mirror of `is_warmup`; defaulted so existing rows stay valid and old image still works. |
@@ -59,12 +58,10 @@ Both changes follow the existing migration discipline (additive, idempotent, nul
 │ + gym-coach skill            │         │  │  schema, search_*, last_*,     ││
 └──────────────────────────────┘         │  │  current_session, run_sql      ││
                                          │  └────────────────────────────────┘│
-                                         │  ┌─ ingestPool (ingest_user) ─────┐│
-                                         │  │  health_log_day  (NEW)          ││
-                                         │  └────────────────────────────────┘│
                                          │  ┌─ writePool (gym_writer) ───────┐│
                                          │  │  start/finish/log_set (+w_b),  ││
-                                         │  │  submit_bulk (+w_b)             ││
+                                         │  │  submit_bulk (+w_b),            ││
+                                         │  │  health_log_day  (NEW)          ││
                                          │  └────────────────────────────────┘│
                                          └─────────────────┬──────────────────┘
                                                            │
@@ -80,12 +77,7 @@ Both changes follow the existing migration discipline (additive, idempotent, nul
                                           └────────────────────────────────┘
 ```
 
-A note on the third pool: there is no dedicated "ingest" pool in the MCP server today — health writes happen via the Edge Function, not MCP. `health_log_day` is the first MCP-side write to a health-domain table. The implementation will either:
-
-- (a) reuse the existing `writePool` and grant `gym_writer_role` `INSERT, UPDATE, SELECT` on `daily_logs` (mixing domains in one role — undesirable), **or**
-- (b) introduce a third pool wired to a `health_ingest_user` LOGIN role that inherits `health_ingest_role`, parallel to how `gym_writer_user` was added.
-
-The implementation plan should choose **(b)** to keep role separation clean and match the existing two-layer (NOLOGIN role + LOGIN user) pattern. Env var: `MCP_HEALTH_INGEST_URL`. Seed.sql and `deploy/install.sh` / `deploy/upgrade.sh` env-var backfill need to add the new user.
+`health_log_day` is the first MCP-side write to a health-domain table (health-sample writes happen via the Edge Function, not MCP). Rather than introducing a third pool / login user / env var, we widen the existing `gym_writer_role` to also own `daily_logs` writes — the role becomes "the MCP server's general-purpose writer". The existing explicit `REVOKE ALL` against `health_samples` / `device_state` / `summary_cache` in `20260511000100_gym_roles.sql` still holds, so the only new write surface for that role is the `daily_logs` table introduced here.
 
 ## Schema
 
@@ -103,11 +95,12 @@ CREATE TABLE IF NOT EXISTS daily_logs (
 
 -- Explicit grants (idempotent; ALTER DEFAULT PRIVILEGES covers SELECT but write grants must be explicit).
 GRANT SELECT                  ON daily_logs TO health_read_role;
-GRANT INSERT, UPDATE, SELECT  ON daily_logs TO health_ingest_role;
+GRANT INSERT, UPDATE, SELECT  ON daily_logs TO gym_writer_role;
+-- daily_logs is the only health-domain table gym_writer_role may write.
+-- The existing REVOKE ALL on health_samples / device_state / summary_cache stays in place.
 
--- Local-dev convenience for the ingest_user (matches existing seed.sql pattern for health_samples).
--- This GRANT lives in seed.sql, not here, but is mentioned for completeness:
---   GRANT TRUNCATE ON daily_logs TO ingest_user;
+-- Local-dev convenience (lives in seed.sql, mentioned here for completeness):
+--   GRANT TRUNCATE ON daily_logs TO gym_writer_user;
 ```
 
 ### Migration 2 — `20260514000100_training_sets_without_break.sql`
@@ -137,20 +130,13 @@ Because the function signature is unchanged, the old MCP image continues to call
 
 ### Seed (`supabase/seed.sql`)
 
-Add a third LOGIN role (`health_ingest_user`) inheriting `health_ingest_role`, parallel to `gym_writer_user`:
+No new LOGIN role. Add a local-dev TRUNCATE grant for the existing `gym_writer_user` so test fixtures can wipe `daily_logs` (parallel to the existing gym-table grants):
 
 ```sql
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'health_ingest_user') THEN
-    CREATE ROLE health_ingest_user LOGIN PASSWORD 'health_ingest_pw' IN ROLE health_ingest_role;
-  END IF;
-END $$;
-
--- Local-dev convenience for the new daily_logs table.
-GRANT TRUNCATE ON daily_logs TO health_ingest_user;
+GRANT TRUNCATE ON daily_logs TO gym_writer_user;
 ```
 
-Production password is generated and stored in `deploy/.env` by `install.sh` (existing pattern); `upgrade.sh` backfills the env var on existing deployments.
+No new password, no new env var, no `install.sh` / `upgrade.sh` changes.
 
 ## MCP surface
 
@@ -204,9 +190,7 @@ Semantics:
 
 ## Server wiring (`mcp-server/src/index.ts`)
 
-- Read `MCP_HEALTH_INGEST_URL` and fail-fast if unset (same shape as `MCP_DATABASE_URL` / `MCP_GYM_WRITER_URL`).
-- Create a third pool `healthIngestPool` and pass it to `buildMcp`.
-- Register `health_log_day` against `healthIngestPool`.
+- No new env var or pool. Register `health_log_day` against the existing `writePool`.
 - Pass `without_break` through in the existing `gym_log_set` and `gym_submit_session_bulk` registrations.
 
 ## Tests
@@ -214,7 +198,7 @@ Semantics:
 | Area | New / changed test | Verifies |
 |---|---|---|
 | `supabase/tests/daily_logs_schema.test.sql` (new) | Table exists, PK on `day`, nullable `alcohol`, NOT NULL `tz`/`created_at`/`updated_at` | Schema shape matches design |
-| `supabase/tests/daily_logs_roles.test.sql` (new) | `health_ingest_role` can INSERT/UPDATE; `health_read_role` can only SELECT; `gym_writer_role` cannot SELECT | Role separation holds |
+| `supabase/tests/daily_logs_roles.test.sql` (new) | `gym_writer_role` can INSERT/UPDATE/SELECT on `daily_logs`; `health_read_role` can only SELECT; `gym_writer_role`'s existing REVOKE on `health_samples`/`device_state`/`summary_cache` still holds | Role grants applied correctly and the existing revoke is not regressed |
 | `supabase/tests/gym_schema.test.sql` (extend) | `training_sets.without_break` column exists with default `false` | Column add applied |
 | `mcp-server/test/tools/health-log-day.test.ts` (new) | Round-trip: upsert new day, upsert same day with new field, COALESCE preserves prior fields, returns resulting row | Tool contract |
 | `mcp-server/test/tools/gym/sets.test.ts` (extend) | `logSet` with `without_break: true` persists and reads back | Pass-through |
@@ -223,15 +207,13 @@ Semantics:
 
 ## Deploy
 
-- `deploy/install.sh` — generate a password for `health_ingest_user`, write `MCP_HEALTH_INGEST_URL` into `deploy/.env`.
-- `deploy/upgrade.sh` — env-var backfill block (same one that backfilled `MCP_GYM_WRITER_URL`) gains a stanza for `MCP_HEALTH_INGEST_URL`; idempotent.
-- `deploy/docker-compose.yml` — `mcp-server` service gains the new env var.
-- `deploy/README.md` — short note: new env var, what it's for.
+No deploy-side changes. No new env var, no new password, no `install.sh` / `upgrade.sh` / `docker-compose.yml` / `README.md` edits. The new MCP tool uses the existing `MCP_GYM_WRITER_URL` connection.
 
 ## Risks & migration safety
 
 - **Old image continues to run.** Both schema migrations are additive with defaults; `last_exercise_results` keeps its signature, only extends the JSON; old code paths are unaffected.
-- **Forgetting `MCP_HEALTH_INGEST_URL`.** Server fails fast at startup with a clear message ("MCP_HEALTH_INGEST_URL is not set") — same pattern as the other two DSNs. Caught immediately, not silently.
+- **No new env vars.** `health_log_day` shares the existing `MCP_GYM_WRITER_URL` connection; nothing to forget on deploy.
+- **Role-domain mixing.** `gym_writer_role` now owns one health-domain table (`daily_logs`). The REVOKE on `health_samples` / `device_state` / `summary_cache` still holds and the new role test verifies this is not regressed. Accepted per user direction.
 - **`alcohol = NULL` semantics.** Documented in the table prose and the tool description; the upsert COALESCE logic makes "leave unchanged" the only way the tool can write `NULL`, so accidental nulling is hard.
 - **`without_break` historical interpretation.** Every existing row defaults to `false` — i.e. "no continuous-rep marker present". Documented in the `last_exercise_results` prose update so the agent doesn't over-claim about pre-feature sessions.
 - **Cross-domain join correctness.** The example query in `schema.ts` joins `daily_logs` with `health_samples` using the stored `tz` — correct because the tz snapshot belongs to the row that recorded the day.
