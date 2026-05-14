@@ -10,6 +10,7 @@ const SetSchema = z.object({
   distance_m:       z.number().optional(),
   rpe:              z.number().int().min(1).max(10).optional(),
   is_warmup:        z.boolean().optional(),
+  without_break:    z.boolean().optional(),
   notes:            z.string().nullable().optional(),
   performed_at:     z.string().optional()
 }).refine(
@@ -175,14 +176,15 @@ export async function submitSessionBulk(pool: Pool, raw: unknown): Promise<BulkR
         await client.query(
           `INSERT INTO training_sets
              (uuid, training_exercise_id, set_index, reps, weight_kg,
-              duration_seconds, distance_m, rpe, is_warmup, notes, performed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, false), $10,
-                   COALESCE($11::timestamptz, $12::timestamptz))`,
+              duration_seconds, distance_m, rpe, is_warmup, without_break, notes, performed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, false), COALESCE($10, false), $11,
+                   COALESCE($12::timestamptz, $13::timestamptz))`,
           [
             st.set_uuid, teId, st.set_index ?? (j + 1),
             st.reps ?? null, st.weight_kg ?? null,
             st.duration_seconds ?? null, st.distance_m ?? null,
             st.rpe ?? null, st.is_warmup ?? null,
+            st.without_break ?? null,
             st.notes ?? null, st.performed_at ?? null, payload.started_at
           ]
         );
