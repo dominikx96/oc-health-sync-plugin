@@ -57,6 +57,7 @@ describe('mcp server end-to-end', () => {
     const text = await list.text();
     expect(text).toMatch(/health_summary/);
     expect(text).toMatch(/health_anomalies/);
+    expect(text).toMatch(/health_log_day/);
     expect(text).toMatch(/run_sql/);
     expect(text).toMatch(/gym_start_session/);
     expect(text).toMatch(/gym_log_set/);
