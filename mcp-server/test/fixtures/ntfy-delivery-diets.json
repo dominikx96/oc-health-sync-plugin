@@ -1,0 +1,164 @@
+{
+  "trace_id": "00000000-0000-0000-0000-000000000000",
+  "start_timestamp": "2026-05-17T19:24:49.482+02:00",
+  "end_timestamp": "2026-05-17T19:24:49.637+02:00",
+  "data": {
+    "results": [
+      {
+        "id": 2070357,
+        "user_id": 1,
+        "diet_id": 3,
+        "user_diet_name": "Domino",
+        "diet_variant_id": 0,
+        "diet_variant_group_id": 0,
+        "status": "TO-BE-REALIZED",
+        "created_at": "2026-03-11 20:01:03",
+        "first_delivery_day": "2026-04-09",
+        "last_delivery_day": "2026-05-29",
+        "delivery_days": [
+          "2026-04-09",
+          "2026-04-10",
+          "2026-04-13",
+          "2026-04-14",
+          "2026-04-15",
+          "2026-04-16",
+          "2026-04-17",
+          "2026-04-20",
+          "2026-04-21",
+          "2026-04-22",
+          "2026-04-23",
+          "2026-04-24",
+          "2026-04-27",
+          "2026-04-28",
+          "2026-04-29",
+          "2026-04-30",
+          "2026-05-04",
+          "2026-05-05",
+          "2026-05-06",
+          "2026-05-07",
+          "2026-05-08",
+          "2026-05-11",
+          "2026-05-12",
+          "2026-05-13",
+          "2026-05-14",
+          "2026-05-15",
+          "2026-05-18",
+          "2026-05-19",
+          "2026-05-20",
+          "2026-05-21",
+          "2026-05-22",
+          "2026-05-25",
+          "2026-05-26",
+          "2026-05-27",
+          "2026-05-28",
+          "2026-05-29"
+        ],
+        "diet_days_count": 36,
+        "realized_count": 26,
+        "to_be_realized_count": 10,
+        "address_ids": [
+          1
+        ],
+        "order_diet_ids": [
+          0
+        ],
+        "kcal": 2000,
+        "is_address_change_possible": true,
+        "is_delivery_day_change_possible": true,
+        "closest_menu_change_day": "2026-05-20",
+        "closest_menu_change_from": "2026-04-30 00:00:00",
+        "closest_menu_change_to": "2026-05-18 16:00:00"
+      },
+      {
+        "id": 2113633,
+        "user_id": 1,
+        "diet_id": 4,
+        "user_diet_name": "Dominos",
+        "diet_variant_id": 0,
+        "diet_variant_group_id": 0,
+        "status": "TO-BE-REALIZED",
+        "created_at": "2026-05-09 00:05:15",
+        "first_delivery_day": "2026-06-01",
+        "last_delivery_day": "2026-06-30",
+        "delivery_days": [
+          "2026-06-01",
+          "2026-06-02",
+          "2026-06-03",
+          "2026-06-04",
+          "2026-06-05",
+          "2026-06-08",
+          "2026-06-09",
+          "2026-06-10",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-22",
+          "2026-06-23",
+          "2026-06-24",
+          "2026-06-25",
+          "2026-06-26",
+          "2026-06-29",
+          "2026-06-30"
+        ],
+        "diet_days_count": 17,
+        "realized_count": 0,
+        "to_be_realized_count": 17,
+        "address_ids": [
+          1
+        ],
+        "order_diet_ids": [
+          0
+        ],
+        "kcal": 2000,
+        "is_address_change_possible": true,
+        "is_delivery_day_change_possible": true,
+        "closest_menu_change_day": "2026-06-01",
+        "closest_menu_change_from": "2026-05-12 00:00:00",
+        "closest_menu_change_to": "2026-05-30 16:00:00"
+      }
+    ],
+    "includes": {
+      "diets": [
+        {
+          "id": 3,
+          "name": "Plus",
+          "description": "<span class='font-body-s'>Plus to rozwiązanie dla osób, które szukają idealnej równowagi między wygodą a bogactwem smaków. Każdego dnia możesz wybierać spośród szerokiej gamy dań inspirowanych kuchniami świata. Znajdziesz tu mięsa, ryby, opcje wege i produkty superfoods, które poprawią Twoje zdrowie i samopoczucie.</span>",
+          "header1": "<span class='font-body-m'>od <span class='font-heading-6'><span class='font-bold'>79,99 zł</span></span> za dzień</span>",
+          "header2": "<span class='font-bold'>45 dań</span> dziennie do wyboru:<br><span class='font-bold'>9 dań w każdym posiłku.</span>",
+          "header3": "Więcej smaku, więcej możliwości",
+          "header4": [
+            "Różnorodność i urozmaicenie",
+            "Pełnowartościowe posiłki",
+            "Dbałość o najwyższą jakość składników"
+          ],
+          "header5": [
+            "Pakiet wyboru menu"
+          ],
+          "position": 3,
+          "available_from": "2026-05-20",
+          "show_calorific_calculator": true
+        },
+        {
+          "id": 4,
+          "name": "Super",
+          "description": "<span class='font-body-s'>Masz ochotę jednego dnia jeść wegańsko, a następnego wybierać posiłki bogate w białko, które wspierają budowę mięśni? Super nadąży za każdą Twoją zmianą i idealnie dopasuje się do Twoich aktualnych potrzeb. To najbardziej elastyczny i różnorodny pakiet, w którym sam decydujesz, na co masz ochotę – od klasycznych domowych dań, przez kuchnię premium z daniami z całego świata.</span>",
+          "header1": "<span class='font-body-m'>od <span class='font-heading-6'><span class='font-bold'>89,99 zł</span></span> za dzień</span>",
+          "header2": "<span class='font-bold'>70 dań</span> dziennie do wyboru:<br><span class='font-bold'>14 dań w każdym posiłku.</span>",
+          "header3": "Zmieniasz się Ty i Twoja dieta",
+          "header4": [
+            "Największy wybór posiłków na rynku",
+            "Restauracyjna jakość",
+            "Pełna elastyczność",
+            "Posiłki inspirowane restauracyjnymi smakami",
+            "Wybór z 70 dań"
+          ],
+          "header5": [
+            "Pakiet wyboru menu"
+          ],
+          "position": 4,
+          "available_from": "2026-05-20",
+          "show_calorific_calculator": true
+        }
+      ]
+    }
+  }
+}

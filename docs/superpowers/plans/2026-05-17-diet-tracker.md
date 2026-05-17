@@ -525,27 +525,44 @@ git commit -m "feat(diet): local-dev diet_writer_user in seed.sql"
 
 - [ ] **Step 1: Generate sanitized fixtures from the gitignored captures**
 
-The raw captures `ntfy-deliveries-2026-05-18.json` and `ntfy-delivery-diets.json` are at repo root (gitignored, contain PII). Strip PII (user/address ids, prices) while preserving structure:
+The raw captures `ntfy-deliveries-2026-05-18.json` and `ntfy-delivery-diets.json` are at repo root (gitignored, contain PII). Strip PII completely (user/address ids, prices, trace_id, and the entire `addresses` include which is fully redacted — not consumed by any diet code); `user_diet_name` is intentionally kept as it is a generic non-identifying diet label that Task 6's test asserts.
 
 Run:
 ```bash
 mkdir -p mcp-server/test/fixtures
-jq '(.data.results[]? | .user_id) = 1
-    | (.data.results[]? | .address_id) = 1
-    | (.data.results[]? | .price_before_discount) = 0
-    | (.data.results[]? | .price_after_discount) = 0
-    | (.data.results[]? | .paid_with_moneybox) = 0
-    | (.data.results[]? | .paid_with_points) = 0
-    | (.data.results[]? | .returned_to_moneybox) = 0
-    | (.data.results[]? | .discount) = 0
-    | (.data.includes.delivery_items[]? | .paid_with_moneybox) = 0
-    | (.data.includes.delivery_items[]? | .paid_with_points) = 0
-    | (.data.includes.delivery_items[]? | .price_before_discount) = 0
-    | (.data.includes.delivery_items[]? | .price_after_discount) = 0' \
+jq '
+  (.trace_id) = "00000000-0000-0000-0000-000000000000"
+  | (.data.results[]?.user_id) = 1
+  | (.data.results[]?.address_id) = 1
+  | (.data.results[]?.price_before_discount) = 0
+  | (.data.results[]?.price_after_discount) = 0
+  | (.data.results[]?.paid_with_moneybox) = 0
+  | (.data.results[]?.paid_with_points) = 0
+  | (.data.results[]?.returned_to_moneybox) = 0
+  | (.data.results[]?.discount) = 0
+  | (.data.includes.delivery_items[]?.paid_with_moneybox) = 0
+  | (.data.includes.delivery_items[]?.paid_with_points) = 0
+  | (.data.includes.delivery_items[]?.price_before_discount) = 0
+  | (.data.includes.delivery_items[]?.price_after_discount) = 0
+  | (.data.includes.addresses) |= ( (. // []) | map(
+        reduce (paths(strings)) as $p (.; setpath($p; "REDACTED"))
+        | .id = 1
+        | .user_id = 1
+        | (if has("delivery_times") and (.delivery_times|type=="array")
+             then .delivery_times |= map(.id = 1) else . end)
+    ))
+' \
   ntfy-deliveries-2026-05-18.json > mcp-server/test/fixtures/ntfy-deliveries.json
 
-jq '(.data.results[]? | .user_id) = 1
-    | (.data.results[]? | .address_ids) = [1]' \
+jq '
+  (.trace_id) = "00000000-0000-0000-0000-000000000000"
+  | (.data.results[]?.user_id) = 1
+  | (.data.results[]?.address_ids) = [1]
+  | (if (.data.includes? and .data.includes.addresses?)
+       then (.data.includes.addresses) |= map(
+              reduce (paths(strings)) as $p (.; setpath($p; "REDACTED")) | .id = 1 | .user_id = 1)
+       else . end)
+' \
   ntfy-delivery-diets.json > mcp-server/test/fixtures/ntfy-delivery-diets.json
 ```
 
