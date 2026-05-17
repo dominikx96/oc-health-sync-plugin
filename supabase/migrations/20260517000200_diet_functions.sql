@@ -22,7 +22,7 @@ meal_dev AS (
         FROM diet_consumption c
        WHERE c.catering_meal_id = m.id AND c.deleted_at IS NULL
          AND c.kind IN ('skip','partial','swap')
-       ORDER BY c.updated_at DESC LIMIT 1
+       ORDER BY c.updated_at DESC, c.id DESC LIMIT 1
     ) dv ON true
    WHERE m.deleted_at IS NULL
 ),
@@ -109,7 +109,7 @@ RETURNS TABLE (
   n_skip INT, n_partial INT, n_swap INT, n_adhoc INT
 ) LANGUAGE sql STABLE AS $$
   SELECT date_trunc('week', day)::date AS week_start,
-         COUNT(*) FILTER (WHERE plan_target_kcal IS NOT NULL)::int,
+         COUNT(*) FILTER (WHERE delivery_diet_id IS NOT NULL)::int,
          SUM(plan_target_kcal), SUM(planned_kcal), SUM(consumed_kcal),
          SUM(consumed_protein_g), SUM(consumed_carb_g), SUM(consumed_fat_g),
          SUM(n_skip)::int, SUM(n_partial)::int, SUM(n_swap)::int, SUM(n_adhoc)::int

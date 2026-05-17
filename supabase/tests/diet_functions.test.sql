@@ -29,6 +29,8 @@ INSERT INTO diet_consumption (uuid, day, tz, kind, name, kcal, protein_g)
 INSERT INTO health_samples (uuid, sample_kind, data_type, value, unit, start_date, end_date) VALUES
   ('e1','quantity','HKQuantityTypeIdentifierActiveEnergyBurned', 600,'kcal','2026-05-18T10:00:00Z','2026-05-18T10:00:00Z'),
   ('e2','quantity','HKQuantityTypeIdentifierBasalEnergyBurned', 1500,'kcal','2026-05-18T10:00:00Z','2026-05-18T10:00:00Z');
+INSERT INTO health_samples (uuid, sample_kind, data_type, value, unit, start_date, end_date) VALUES
+  ('e3','quantity','HKQuantityTypeIdentifierBasalEnergyBurned', 1600,'kcal','2026-05-19T10:00:00Z','2026-05-19T10:00:00Z');
 
 DO $$
 DECLARE r RECORD;
@@ -40,6 +42,9 @@ BEGIN
   END IF;
   IF r.n_skip <> 1 OR r.n_partial <> 1 OR r.n_adhoc <> 1 THEN
     RAISE EXCEPTION 'deviation counts wrong: skip=% partial=% adhoc=%', r.n_skip, r.n_partial, r.n_adhoc;
+  END IF;
+  IF r.n_planned <> 2 THEN
+    RAISE EXCEPTION 'n_planned expected 2 (total catering slots) got %', r.n_planned;
   END IF;
   IF r.plan_target_kcal <> 2000 OR r.planned_kcal <> 1200 THEN
     RAISE EXCEPTION 'plan numbers wrong: target=% planned=%', r.plan_target_kcal, r.planned_kcal;
@@ -69,6 +74,11 @@ BEGIN
   -- breakfast back to full 500 ; lunch 0 ; adhoc 200 => 700
   IF r.consumed_kcal <> 700 THEN
     RAISE EXCEPTION 'soft-delete handling wrong: expected 700 got %', r.consumed_kcal;
+  END IF;
+
+  SELECT * INTO r FROM diet_energy_balance('UTC') WHERE day = DATE '2026-05-19';
+  IF r.intake_kcal <> 0 OR r.total_out_kcal <> 1600 OR r.net_kcal <> -1600 THEN
+    RAISE EXCEPTION 'exercise-only day wrong: intake=% out=% net=%', r.intake_kcal, r.total_out_kcal, r.net_kcal;
   END IF;
 
   RAISE NOTICE 'diet_functions.test.sql OK';

@@ -246,6 +246,8 @@ INSERT INTO diet_consumption (uuid, day, tz, kind, name, kcal, protein_g)
 INSERT INTO health_samples (uuid, sample_kind, data_type, value, unit, start_date, end_date) VALUES
   ('e1','quantity','HKQuantityTypeIdentifierActiveEnergyBurned', 600,'kcal','2026-05-18T10:00:00Z','2026-05-18T10:00:00Z'),
   ('e2','quantity','HKQuantityTypeIdentifierBasalEnergyBurned', 1500,'kcal','2026-05-18T10:00:00Z','2026-05-18T10:00:00Z');
+INSERT INTO health_samples (uuid, sample_kind, data_type, value, unit, start_date, end_date) VALUES
+  ('e3','quantity','HKQuantityTypeIdentifierBasalEnergyBurned', 1600,'kcal','2026-05-19T10:00:00Z','2026-05-19T10:00:00Z');
 
 DO $$
 DECLARE r RECORD;
@@ -257,6 +259,9 @@ BEGIN
   END IF;
   IF r.n_skip <> 1 OR r.n_partial <> 1 OR r.n_adhoc <> 1 THEN
     RAISE EXCEPTION 'deviation counts wrong: skip=% partial=% adhoc=%', r.n_skip, r.n_partial, r.n_adhoc;
+  END IF;
+  IF r.n_planned <> 2 THEN
+    RAISE EXCEPTION 'n_planned expected 2 (total catering slots) got %', r.n_planned;
   END IF;
   IF r.plan_target_kcal <> 2000 OR r.planned_kcal <> 1200 THEN
     RAISE EXCEPTION 'plan numbers wrong: target=% planned=%', r.plan_target_kcal, r.planned_kcal;
@@ -286,6 +291,11 @@ BEGIN
   -- breakfast back to full 500 ; lunch 0 ; adhoc 200 => 700
   IF r.consumed_kcal <> 700 THEN
     RAISE EXCEPTION 'soft-delete handling wrong: expected 700 got %', r.consumed_kcal;
+  END IF;
+
+  SELECT * INTO r FROM diet_energy_balance('UTC') WHERE day = DATE '2026-05-19';
+  IF r.intake_kcal <> 0 OR r.total_out_kcal <> 1600 OR r.net_kcal <> -1600 THEN
+    RAISE EXCEPTION 'exercise-only day wrong: intake=% out=% net=%', r.intake_kcal, r.total_out_kcal, r.net_kcal;
   END IF;
 
   RAISE NOTICE 'diet_functions.test.sql OK';
@@ -326,7 +336,7 @@ meal_dev AS (
         FROM diet_consumption c
        WHERE c.catering_meal_id = m.id AND c.deleted_at IS NULL
          AND c.kind IN ('skip','partial','swap')
-       ORDER BY c.updated_at DESC LIMIT 1
+       ORDER BY c.updated_at DESC, c.id DESC LIMIT 1
     ) dv ON true
    WHERE m.deleted_at IS NULL
 ),
@@ -413,7 +423,7 @@ RETURNS TABLE (
   n_skip INT, n_partial INT, n_swap INT, n_adhoc INT
 ) LANGUAGE sql STABLE AS $$
   SELECT date_trunc('week', day)::date AS week_start,
-         COUNT(*) FILTER (WHERE plan_target_kcal IS NOT NULL)::int,
+         COUNT(*) FILTER (WHERE delivery_diet_id IS NOT NULL)::int,
          SUM(plan_target_kcal), SUM(planned_kcal), SUM(consumed_kcal),
          SUM(consumed_protein_g), SUM(consumed_carb_g), SUM(consumed_fat_g),
          SUM(n_skip)::int, SUM(n_partial)::int, SUM(n_swap)::int, SUM(n_adhoc)::int
