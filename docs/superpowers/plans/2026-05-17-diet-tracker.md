@@ -913,6 +913,8 @@ git commit -m "feat(diet): diet_sync_subscriptions + diet_sync_catering_day"
 
 - [ ] **Step 1: Write the failing test**
 
+> DATE columns are read back via `to_char(...,'YYYY-MM-DD')` so the assertion is timezone-independent (node-postgres maps DATE→JS Date at local midnight).
+
 Create `mcp-server/src/tools/diet/log.test.ts`:
 
 ```ts
@@ -951,9 +953,9 @@ describe('logMeal', () => {
 describe('logDeviation', () => {
   it('resolves catering_meal_id from (day, meal_slot_key) for a partial', async () => {
     const r = await logDeviation(writePool, { uuid: 'd1', kind: 'partial', day: '2026-05-18', meal_slot_key: 'BREAKFAST', consumed_fraction: 0.5 });
-    const row = await adminPool.query(`SELECT catering_meal_id, day, consumed_fraction FROM diet_consumption WHERE uuid='d1'`);
+    const row = await adminPool.query(`SELECT catering_meal_id, to_char(day,'YYYY-MM-DD') AS day, consumed_fraction FROM diet_consumption WHERE uuid='d1'`);
     expect(row.rows[0].catering_meal_id).not.toBeNull();
-    expect(row.rows[0].day.toISOString().slice(0,10)).toBe('2026-05-18');
+    expect(row.rows[0].day).toBe('2026-05-18');
     expect(Number(row.rows[0].consumed_fraction)).toBe(0.5);
     expect(r.id).toBeGreaterThan(0);
   });
