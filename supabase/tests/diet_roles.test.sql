@@ -28,6 +28,12 @@ BEGIN
     RAISE EXCEPTION 'health_ingest_role should NOT write diet_products';
   END IF;
 
+  -- defense-in-depth: REVOKE ALL must override the ALTER DEFAULT PRIVILEGES
+  -- SELECT that health_ingest_role would otherwise inherit on new tables.
+  IF has_table_privilege('health_ingest_role', 'public.diet_products', 'SELECT') THEN
+    RAISE EXCEPTION 'health_ingest_role should NOT have SELECT on diet_products (REVOKE ALL must strip inherited default-privilege SELECT)';
+  END IF;
+
   -- read role can SELECT diet_* (functions are added in Task 3, not checked here)
   IF NOT has_table_privilege('health_read_role', 'public.diet_catering_meals', 'SELECT') THEN
     RAISE EXCEPTION 'health_read_role missing SELECT on diet_catering_meals';
