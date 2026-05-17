@@ -14,6 +14,11 @@ GRANT INSERT, UPDATE, SELECT ON diet_catering_day     TO diet_writer_role;
 GRANT INSERT, UPDATE, SELECT ON diet_consumption      TO diet_writer_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO diet_writer_role;
 
+-- diet_add_note(scope='day') appends to daily_logs.notes via the diet writer pool.
+-- daily_logs is the shared per-day lifestyle log (gym_writer_role already writes it,
+-- per 20260514000000_daily_logs.sql); the diet writer needs the same access.
+GRANT INSERT, UPDATE, SELECT ON daily_logs TO diet_writer_role;
+
 -- Defense in depth: diet writer cannot touch other domains' write surfaces.
 REVOKE ALL ON health_samples, device_state, summary_cache FROM diet_writer_role;
 REVOKE ALL ON exercises, gyms, gym_machines,

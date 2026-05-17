@@ -12,6 +12,14 @@ BEGIN
     RAISE EXCEPTION 'diet_writer_role missing UPDATE on diet_catering_meals';
   END IF;
 
+  -- diet_add_note(scope='day') writes to daily_logs via diet writer pool
+  IF NOT has_table_privilege('diet_writer_role', 'public.daily_logs', 'INSERT') THEN
+    RAISE EXCEPTION 'diet_writer_role missing INSERT on daily_logs (needed by diet_add_note scope=day)';
+  END IF;
+  IF NOT has_table_privilege('diet_writer_role', 'public.daily_logs', 'UPDATE') THEN
+    RAISE EXCEPTION 'diet_writer_role missing UPDATE on daily_logs';
+  END IF;
+
   -- diet_writer_role cannot touch other domains' write surfaces
   IF has_table_privilege('diet_writer_role', 'public.health_samples', 'INSERT') THEN
     RAISE EXCEPTION 'diet_writer_role should NOT write health_samples';

@@ -152,6 +152,14 @@ BEGIN
     RAISE EXCEPTION 'diet_writer_role missing UPDATE on diet_catering_meals';
   END IF;
 
+  -- diet_add_note(scope='day') writes to daily_logs via diet writer pool
+  IF NOT has_table_privilege('diet_writer_role', 'public.daily_logs', 'INSERT') THEN
+    RAISE EXCEPTION 'diet_writer_role missing INSERT on daily_logs (needed by diet_add_note scope=day)';
+  END IF;
+  IF NOT has_table_privilege('diet_writer_role', 'public.daily_logs', 'UPDATE') THEN
+    RAISE EXCEPTION 'diet_writer_role missing UPDATE on daily_logs';
+  END IF;
+
   -- diet_writer_role cannot touch other domains' write surfaces
   IF has_table_privilege('diet_writer_role', 'public.health_samples', 'INSERT') THEN
     RAISE EXCEPTION 'diet_writer_role should NOT write health_samples';
@@ -168,8 +176,13 @@ BEGIN
     RAISE EXCEPTION 'health_ingest_role should NOT write diet_products';
   END IF;
 
-  -- read role can SELECT diet_* and EXECUTE the functions (functions added in Task 3;
-  -- this block only checks SELECT here)
+  -- defense-in-depth: REVOKE ALL must override the ALTER DEFAULT PRIVILEGES
+  -- SELECT that health_ingest_role would otherwise inherit on new tables.
+  IF has_table_privilege('health_ingest_role', 'public.diet_products', 'SELECT') THEN
+    RAISE EXCEPTION 'health_ingest_role should NOT have SELECT on diet_products (REVOKE ALL must strip inherited default-privilege SELECT)';
+  END IF;
+
+  -- read role can SELECT diet_* (functions are added in Task 3, not checked here)
   IF NOT has_table_privilege('health_read_role', 'public.diet_catering_meals', 'SELECT') THEN
     RAISE EXCEPTION 'health_read_role missing SELECT on diet_catering_meals';
   END IF;
@@ -188,7 +201,7 @@ Expected: FAIL — `diet_writer_role missing`.
 
 - [ ] **Step 3: Write the roles migration**
 
-Create `supabase/migrations/20260517000100_diet_roles.sql` — copy the role-creation `DO $$` block and all `GRANT`/`REVOKE` statements **verbatim** from the spec's "Roles & grants" section, **except** drop the three `GRANT EXECUTE ON FUNCTION diet_*` lines (the functions don't exist until Task 3 — they move to Task 3's migration). Keep: the `CREATE ROLE diet_writer_role NOLOGIN` guard; `GRANT INSERT,UPDATE,SELECT` on the five diet tables + `GRANT USAGE,SELECT ON ALL SEQUENCES`; the cross-domain `REVOKE ALL` (both directions); `GRANT SELECT` on the five diet tables to `health_read_role`.
+Create `supabase/migrations/20260517000100_diet_roles.sql` — copy the role-creation `DO $$` block and all `GRANT`/`REVOKE` statements **verbatim** from the spec's "Roles & grants" section, **except** drop the three `GRANT EXECUTE ON FUNCTION diet_*` lines (the functions don't exist until Task 3 — they move to Task 3's migration). Keep: the `CREATE ROLE diet_writer_role NOLOGIN` guard; `GRANT INSERT,UPDATE,SELECT` on the five diet tables + `GRANT USAGE,SELECT ON ALL SEQUENCES`; the `GRANT INSERT,UPDATE,SELECT ON daily_logs TO diet_writer_role` (needed by `diet_add_note scope=day`); the cross-domain `REVOKE ALL` (both directions); `GRANT SELECT` on the five diet tables to `health_read_role`.
 
 - [ ] **Step 4: Run the test, expect pass**
 
@@ -1382,6 +1395,8 @@ export async function addNote(pool: Pool, input: AddNoteInput): Promise<{ ok: tr
 
 Run: `cd supabase && supabase db reset && cd ../mcp-server && npm test -- src/tools/diet/notes.test.ts; cd ..`
 Expected: all `addNote` tests pass.
+
+**Note (plan defect adjudicated):** `scope='day'` appends to `daily_logs.notes` via the diet writer pool. `diet_writer_role` must have `INSERT, UPDATE, SELECT` on `daily_logs` — this grant is in the Task 2 migration (`20260517000100_diet_roles.sql`). Without it, the `scope=day` test will fail with a permission error.
 
 - [ ] **Step 5: Commit**
 
