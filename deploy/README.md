@@ -117,7 +117,7 @@ Or edit `~/oc-health-sync/.env` after first install and re-run `install.sh` (the
 
 ## Login users and writer URLs
 
-`install.sh` creates three write-limited login users in addition to the read/ingest users:
+`install.sh` creates two write-limited login users in addition to the read/ingest users:
 
 | User | Role | Env var |
 |---|---|---|
