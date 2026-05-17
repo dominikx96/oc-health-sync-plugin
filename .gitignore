@@ -9,3 +9,6 @@ dist/
 # Playwright MCP artifacts and captured API payloads (contain PII — never commit)
 .playwright-mcp/
 ntfy-*.json
+
+# Local git worktrees (Step 1b fallback workspace)
+.worktrees/
