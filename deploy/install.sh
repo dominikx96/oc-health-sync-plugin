@@ -89,6 +89,7 @@ if [[ "$MODE" == "install" && ! -f .env ]]; then
   INGEST_USER_PASSWORD="${INGEST_USER_PASSWORD:-$(randhex 16)}"
   READ_USER_PASSWORD="${READ_USER_PASSWORD:-$(randhex 16)}"
   GYM_WRITER_PASSWORD="${GYM_WRITER_PASSWORD:-$(randhex 16)}"
+  DIET_WRITER_PASSWORD="${DIET_WRITER_PASSWORD:-$(randhex 16)}"
   ANON_KEY="${ANON_KEY:-$(generate_jwt "$JWT_SECRET" anon)}"
   SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY:-$(generate_jwt "$JWT_SECRET" service_role)}"
   MCP_PORT="${MCP_PORT:-3737}"
@@ -104,9 +105,11 @@ MCP_API_KEY=$MCP_API_KEY
 INGEST_USER_PASSWORD=$INGEST_USER_PASSWORD
 READ_USER_PASSWORD=$READ_USER_PASSWORD
 GYM_WRITER_PASSWORD=$GYM_WRITER_PASSWORD
+DIET_WRITER_PASSWORD=$DIET_WRITER_PASSWORD
 INGEST_DATABASE_URL=postgresql://ingest_user:$INGEST_USER_PASSWORD@db:5432/postgres
 MCP_DATABASE_URL=postgresql://read_user:$READ_USER_PASSWORD@db:5432/postgres
 MCP_GYM_WRITER_URL=postgresql://gym_writer_user:$GYM_WRITER_PASSWORD@db:5432/postgres
+MCP_DIET_WRITER_URL=postgresql://diet_writer_user:$DIET_WRITER_PASSWORD@db:5432/postgres
 MCP_PORT=$MCP_PORT
 EOF
   echo "→ Wrote $INSTALL_DIR/.env (mode 600)"
@@ -135,6 +138,13 @@ if [[ "$MODE" == "upgrade" && -f .env ]]; then
   _gym_writer_pw="$(grep '^GYM_WRITER_PASSWORD=' .env | head -1 | cut -d= -f2-)"
   append_env "MCP_GYM_WRITER_URL" "postgresql://gym_writer_user:${_gym_writer_pw}@db:5432/postgres"
   unset _gym_writer_pw
+  # v0.4.0 — diet writer credentials.
+  if ! grep -q '^DIET_WRITER_PASSWORD=' .env; then
+    append_env "DIET_WRITER_PASSWORD" "$(randhex 16)"
+  fi
+  _diet_writer_pw="$(grep '^DIET_WRITER_PASSWORD=' .env | head -1 | cut -d= -f2-)"
+  append_env "MCP_DIET_WRITER_URL" "postgresql://diet_writer_user:${_diet_writer_pw}@db:5432/postgres"
+  unset _diet_writer_pw
 fi
 
 # --- Load env --------------------------------------------------------------
@@ -163,6 +173,7 @@ services:
       MCP_PORT: ${MCP_PORT}
       MCP_DATABASE_URL: ${MCP_DATABASE_URL}
       MCP_GYM_WRITER_URL: ${MCP_GYM_WRITER_URL}
+      MCP_DIET_WRITER_URL: ${MCP_DIET_WRITER_URL}
     ports:
       - "127.0.0.1:${MCP_PORT}:${MCP_PORT}"
     depends_on:
@@ -263,7 +274,7 @@ dc run --rm \
 # Runs on both modes so a release that adds a new login user (like
 # gym_writer_user in v0.3.0) self-heals existing installs. The CREATE/ALTER
 # fork is a no-op on re-runs when the password in .env hasn't changed.
-echo "→ Provisioning login users (ingest_user, read_user, gym_writer_user)"
+echo "→ Provisioning login users (ingest_user, read_user, gym_writer_user, diet_writer_user)"
 docker exec -i \
   -e PGPASSWORD="${POSTGRES_PASSWORD}" \
   supabase-db \
@@ -285,10 +296,16 @@ BEGIN
   ELSE
     ALTER ROLE gym_writer_user WITH PASSWORD '${GYM_WRITER_PASSWORD}';
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'diet_writer_user') THEN
+    CREATE ROLE diet_writer_user LOGIN PASSWORD '${DIET_WRITER_PASSWORD}' IN ROLE diet_writer_role;
+  ELSE
+    ALTER ROLE diet_writer_user WITH PASSWORD '${DIET_WRITER_PASSWORD}';
+  END IF;
 END \$\$;
 GRANT health_ingest_role TO ingest_user;
 GRANT health_read_role   TO read_user;
 GRANT gym_writer_role    TO gym_writer_user;
+GRANT diet_writer_role   TO diet_writer_user;
 SQL
 
 # --- Sync edge function code from image to host volume -------------------
