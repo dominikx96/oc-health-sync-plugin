@@ -49,4 +49,12 @@ describe('describeSchema', () => {
     expect(md).toMatch(/`without_break`/);
     expect(md).toMatch(/health_log_day/);  // mentioned in the prose section
   });
+
+  it('documents the diet domain', async () => {
+    const md = await describeSchema(pool);
+    expect(md).toContain('diet_catering_meals');
+    expect(md).toContain('diet_consumed_day(tz)');
+    expect(md).toContain('diet_energy_balance(tz)');
+    expect(md).toContain("'VEGAN' = ANY (p.categories)");
+  });
 });

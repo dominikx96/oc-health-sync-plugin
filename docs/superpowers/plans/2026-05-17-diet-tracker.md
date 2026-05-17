@@ -1571,7 +1571,7 @@ In `mcp-server/src/resources/schema.ts`:
 2. In the "Set-returning functions" bullet list, append:
 
 ```
-'- `diet_consumed_day(tz)` — per-day planned vs effective-consumed nutrition (catering minus skips, ×fraction for partials, swap-product for swaps, plus ad-hoc; `note`/deleted excluded) with deviation counts.',
+'- `diet_consumed_day(tz)` — per-day planned vs effective-consumed nutrition (catering minus skips, ×fraction for partials, swap-product for swaps, plus ad-hoc; `note`/deleted excluded) with deviation counts (`n_planned` = count of planned catering meal slots for the day, `n_skip`, `n_partial`, `n_swap`, `n_adhoc`).',
 '- `diet_weekly(tz)` — weekly buckets of the above.',
 '- `diet_energy_balance(tz)` — per-day `intake_kcal` vs HealthKit active+basal energy; `net_kcal`.',
 ```
