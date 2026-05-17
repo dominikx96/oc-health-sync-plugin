@@ -63,4 +63,16 @@ describe('syncCateringDay', () => {
     expect(stub.rows).toHaveLength(1);
     expect(stub.rows[0].kcal).toBeNull();
   });
+
+  it('does not fail when a product has no name (NOT NULL fallback)', async () => {
+    const p = fx('ntfy-deliveries.json');
+    delete p.data.includes.simple_products[0].name;
+    const r = await syncCateringDay(writePool, p);
+    expect(r.no_delivery).toBe(false);
+    const stub = await adminPool.query(
+      `SELECT name FROM diet_products WHERE simple_product_id = $1`,
+      [p.data.includes.simple_products[0].id]
+    );
+    expect(stub.rows[0].name).toBe(`product ${p.data.includes.simple_products[0].id}`);
+  });
 });

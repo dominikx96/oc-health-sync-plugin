@@ -75,7 +75,8 @@ export async function syncCateringDay(pool: Pool, raw: unknown): Promise<SyncCat
   const alts: any[]     = Array.isArray(inc.alternative_meals) ? inc.alternative_meals : [];
   const aggregates: any[] = Array.isArray(data.aggregates) ? data.aggregates : [];
 
-  const day: string = delivery.date;
+  const day: string = delivery?.date;
+  if (!day) throw new Error('invalid payload: delivery.date is missing');
   const deliveryDietId: number | undefined =
     items.find((i) => i.delivery_diet_id != null)?.delivery_diet_id;
   if (deliveryDietId == null) throw new Error('cannot determine delivery_diet_id from payload');
@@ -119,7 +120,7 @@ export async function syncCateringDay(pool: Pool, raw: unknown): Promise<SyncCat
            crc32=EXCLUDED.crc32, raw=EXCLUDED.raw, updated_at=now()
          WHERE diet_products.crc32 IS DISTINCT FROM EXCLUDED.crc32`,
         [
-          sp.id, sp.name ?? (stub ? `product ${sp.id}` : null), sp.composition ?? null,
+          sp.id, sp.name ?? `product ${sp.id}`, sp.composition ?? null,
           sp.weight ?? null, sp.kind ?? null,
           n.kcal, n.kj, n.protein_g, n.carb_g, n.fat_g, n.saturated_fat_g, n.fiber_g, n.sugar_g, n.salt_g,
           n.protein_pct, n.carb_pct, n.fat_pct,
@@ -139,6 +140,7 @@ export async function syncCateringDay(pool: Pool, raw: unknown): Promise<SyncCat
       if (it.simple_product_id != null && !productById.has(it.simple_product_id)) {
         warnings.push(`simple_product_id ${it.simple_product_id} missing from includes — stubbed`);
         await upsertProduct({ id: it.simple_product_id }, true);
+        productById.set(it.simple_product_id, { id: it.simple_product_id });
       }
       const dvm  = dvMealById.get(it.diet_variant_meal_id);
       const slot = dvm ? typeById.get(dvm.diet_variant_meal_type_id) : undefined;
