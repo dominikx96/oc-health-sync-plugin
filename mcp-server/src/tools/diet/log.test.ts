@@ -49,4 +49,21 @@ describe('logDeviation', () => {
     await expect(logDeviation(writePool, { uuid: 'd3', kind: 'partial', day: '2026-05-18', meal_slot_key: 'BREAKFAST' }))
       .rejects.toThrow(/consumed_fraction/);
   });
+
+  it('is idempotent on uuid (second call returns same id, no dup row)', async () => {
+    const r1 = await logDeviation(writePool, { uuid: 'dup1', kind: 'skip', day: '2026-05-18', meal_slot_key: 'BREAKFAST' });
+    const r2 = await logDeviation(writePool, { uuid: 'dup1', kind: 'skip', day: '2026-05-18', meal_slot_key: 'BREAKFAST' });
+    expect(r2.id).toBe(r1.id);
+    const n = await adminPool.query(`SELECT count(*)::int c FROM diet_consumption WHERE uuid='dup1'`);
+    expect(n.rows[0].c).toBe(1);
+  });
+
+  it('records a swap with swap_product_id', async () => {
+    const r = await logDeviation(writePool, { uuid: 'sw1', kind: 'swap', day: '2026-05-18', meal_slot_key: 'BREAKFAST', swap_product_id: 10 });
+    expect(r.id).toBeGreaterThan(0);
+    const row = await adminPool.query(`SELECT kind, swap_product_id, to_char(day,'YYYY-MM-DD') AS day FROM diet_consumption WHERE uuid='sw1'`);
+    expect(row.rows[0].kind).toBe('swap');
+    expect(Number(row.rows[0].swap_product_id)).toBe(10);
+    expect(row.rows[0].day).toBe('2026-05-18');
+  });
 });

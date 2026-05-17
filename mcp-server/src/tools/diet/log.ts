@@ -15,6 +15,8 @@ export async function logMeal(pool: Pool, input: LogMealInput): Promise<LogResul
   if (!input.name || input.kcal == null) throw new Error('adhoc meal requires name and kcal');
   const tz = input.tz ?? 'UTC';
 
+  // Idempotent on uuid: single-writer MCP, so select-then-insert is safe;
+  // the UNIQUE(uuid) constraint on diet_consumption is the race backstop.
   const existing = await pool.query<{ id: string }>(`SELECT id FROM diet_consumption WHERE uuid=$1`, [input.uuid]);
   if (existing.rows[0]) return { id: Number(existing.rows[0].id) };
 
@@ -46,6 +48,8 @@ export async function logDeviation(pool: Pool, input: LogDeviationInput): Promis
   if (input.kind === 'swap' && input.swap_product_id == null) throw new Error('swap requires swap_product_id');
   const tz = input.tz ?? 'UTC';
 
+  // Idempotent on uuid: single-writer MCP, so select-then-insert is safe;
+  // the UNIQUE(uuid) constraint on diet_consumption is the race backstop.
   const existing = await pool.query<{ id: string }>(`SELECT id FROM diet_consumption WHERE uuid=$1`, [input.uuid]);
   if (existing.rows[0]) return { id: Number(existing.rows[0].id) };
 
@@ -53,20 +57,19 @@ export async function logDeviation(pool: Pool, input: LogDeviationInput): Promis
   let day = input.day ?? null;
   if (mealId == null) {
     if (!input.meal_slot_key) throw new Error('either catering_meal_id or (day + meal_slot_key) is required');
-    const resolveDay = input.day ?? null;
     const m = await pool.query<{ id: string; day: string }>(
       `SELECT id, to_char(day,'YYYY-MM-DD') AS day FROM diet_catering_meals
         WHERE deleted_at IS NULL AND meal_slot_key = $1
           AND day = COALESCE($2::date, (now() AT TIME ZONE $3)::date)`,
-      [input.meal_slot_key, resolveDay, tz]
+      [input.meal_slot_key, day, tz]
     );
     if (m.rows.length === 0) throw new Error(`no catering meal for slot ${input.meal_slot_key} on that day`);
     if (m.rows.length > 1) throw new Error(`ambiguous: multiple catering meals for slot ${input.meal_slot_key} that day`);
     mealId = Number(m.rows[0].id);
     day = m.rows[0].day;
   } else {
-    const m = await pool.query<{ day: string }>(`SELECT to_char(day,'YYYY-MM-DD') AS day FROM diet_catering_meals WHERE id=$1`, [mealId]);
-    if (!m.rows[0]) throw new Error(`catering_meal_id ${mealId} not found`);
+    const m = await pool.query<{ day: string }>(`SELECT to_char(day,'YYYY-MM-DD') AS day FROM diet_catering_meals WHERE id=$1 AND deleted_at IS NULL`, [mealId]);
+    if (!m.rows[0]) throw new Error(`catering_meal_id ${mealId} not found or deleted`);
     day = m.rows[0].day;
   }
 
