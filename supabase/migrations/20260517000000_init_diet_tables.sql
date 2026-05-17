@@ -1,3 +1,7 @@
+-- Diet tracker: subscription mirror, product catalog, catering slots, day
+-- totals, and the user-owned consumption log. Catering tables are idempotent
+-- provider mirrors. Additive/idempotent (CREATE … IF NOT EXISTS) per repo policy.
+
 CREATE TABLE IF NOT EXISTS diet_subscriptions (
   delivery_diet_id   BIGINT PRIMARY KEY,
   diet_id            BIGINT,

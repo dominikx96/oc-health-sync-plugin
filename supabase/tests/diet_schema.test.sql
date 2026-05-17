@@ -43,6 +43,14 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
+  -- 3b. consumed_fraction = 0 is rejected (0 means "ate nothing" = skip; excluded by design)
+  BEGIN
+    INSERT INTO diet_consumption (uuid, day, tz, kind, catering_meal_id, consumed_fraction)
+      VALUES ('c-zero-frac', DATE '2026-05-18', 'UTC', 'partial', meal_id_v, 0);
+    RAISE EXCEPTION 'expected consumed_fraction=0 CHECK to fail';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
   -- 4. adhoc requires name + kcal
   BEGIN
     INSERT INTO diet_consumption (uuid, day, tz, kind)
@@ -62,6 +70,8 @@ BEGIN
     ('c-adhoc', DATE '2026-05-18', 'UTC', 'adhoc', 'Banana', 95);
   INSERT INTO diet_consumption (uuid, day, tz, kind, catering_meal_id, notes) VALUES
     ('c-note', DATE '2026-05-18', 'UTC', 'note', meal_id_v, 'tasty');
+  INSERT INTO diet_consumption (uuid, day, tz, kind, meal_slot_key, notes) VALUES
+    ('c-note-slot', DATE '2026-05-18', 'UTC', 'note', 'LUNCH', 'note via slot only');
 
   -- 6. GIN index columns exist and accept arrays
   UPDATE diet_products SET categories = ARRAY['VEGAN'], allergens = ARRAY['GLUTEN']
@@ -69,3 +79,6 @@ BEGIN
 
   RAISE NOTICE 'diet_schema.test.sql OK';
 END $$;
+
+TRUNCATE diet_consumption, diet_catering_meals, diet_catering_day,
+         diet_products, diet_subscriptions RESTART IDENTITY CASCADE;
