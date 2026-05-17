@@ -5,3 +5,7 @@ dist/
 *.sqlite-shm
 .env
 .DS_Store
+
+# Playwright MCP artifacts and captured API payloads (contain PII — never commit)
+.playwright-mcp/
+ntfy-*.json
