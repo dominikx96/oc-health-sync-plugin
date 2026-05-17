@@ -17,8 +17,12 @@ import { logSet, addNote } from './tools/gym/sets.js';
 import { lastSessionSummary, lastExerciseResults } from './tools/gym/lookup.js';
 import { submitSessionBulk } from './tools/gym/bulk.js';
 import { healthLogDay } from './tools/health-log-day.js';
+import { syncSubscriptions, syncCateringDay } from './tools/diet/sync.js';
+import { logMeal, logDeviation } from './tools/diet/log.js';
+import { updateEntry, deleteEntry } from './tools/diet/edit.js';
+import { addNote as dietAddNote } from './tools/diet/notes.js';
 
-function buildMcp(readPool: Pool, writePool: Pool): McpServer {
+function buildMcp(readPool: Pool, writePool: Pool, dietWritePool: Pool): McpServer {
   const server = new McpServer({ name: 'oc-health-sync', version: '0.1.0' });
 
   server.registerTool(
@@ -230,6 +234,71 @@ function buildMcp(readPool: Pool, writePool: Pool): McpServer {
     async (i) => text(await healthLogDay(writePool, i))
   );
 
+  // --- Diet / nutrition ----------------------------------------------
+  server.registerTool('diet_sync_subscriptions',
+    { description: 'Upsert diet subscriptions from the raw ntfy.pl /delivery-diets JSON. Idempotent.',
+      inputSchema: z.object({ payload: z.unknown() }) },
+    async (i) => text(await syncSubscriptions(dietWritePool, (i as { payload: unknown }).payload))
+  );
+  server.registerTool('diet_sync_catering_day',
+    { description: 'Upsert one day of catering (products, meals, day totals) from the raw ntfy.pl /deliveries JSON. Idempotent; never touches consumption.',
+      inputSchema: z.object({ payload: z.unknown() }) },
+    async (i) => text(await syncCateringDay(dietWritePool, (i as { payload: unknown }).payload))
+  );
+  server.registerTool('diet_log_meal',
+    { description: 'Log an ad-hoc meal with agent-supplied nutrition. Idempotent on uuid.',
+      inputSchema: z.object({
+        uuid: z.string().min(1), date: z.string().optional(), tz: z.string().optional(),
+        meal_slot_key: z.string().optional(), name: z.string().min(1), kcal: z.number(),
+        protein_g: z.number().optional(), carb_g: z.number().optional(), fat_g: z.number().optional(),
+        saturated_fat_g: z.number().optional(), fiber_g: z.number().optional(),
+        sugar_g: z.number().optional(), salt_g: z.number().optional(), weight_g: z.number().optional(),
+        source: z.enum(['label_photo','web_research','estimate']),
+        photo_ref: z.string().optional(), notes: z.string().optional()
+      }) },
+    async (i) => text(await logMeal(dietWritePool, i as Parameters<typeof logMeal>[1]))
+  );
+  server.registerTool('diet_log_deviation',
+    { description: 'Record skip/partial/swap against a planned catering meal. Resolves the meal from (day, meal_slot_key) if catering_meal_id is omitted. Idempotent on uuid.',
+      inputSchema: z.object({
+        uuid: z.string().min(1), kind: z.enum(['skip','partial','swap']),
+        day: z.string().optional(), tz: z.string().optional(),
+        meal_slot_key: z.string().optional(), catering_meal_id: z.number().int().positive().optional(),
+        consumed_fraction: z.number().gt(0).max(1).optional(),
+        swap_product_id: z.number().int().positive().optional(), notes: z.string().optional()
+      }) },
+    async (i) => text(await logDeviation(dietWritePool, i as Parameters<typeof logDeviation>[1]))
+  );
+  server.registerTool('diet_update_entry',
+    { description: 'Edit a diet_consumption row; omitted fields are preserved.',
+      inputSchema: z.object({
+        uuid: z.string().optional(), id: z.number().int().positive().optional(),
+        meal_slot_key: z.string().optional(), consumed_fraction: z.number().gt(0).max(1).optional(),
+        swap_product_id: z.number().int().positive().optional(), name: z.string().optional(),
+        kcal: z.number().optional(), protein_g: z.number().optional(), carb_g: z.number().optional(),
+        fat_g: z.number().optional(), saturated_fat_g: z.number().optional(),
+        fiber_g: z.number().optional(), sugar_g: z.number().optional(), salt_g: z.number().optional(),
+        weight_g: z.number().optional(), source: z.enum(['label_photo','web_research','estimate']).optional(),
+        photo_ref: z.string().optional(), notes: z.string().optional()
+      }) },
+    async (i) => text(await updateEntry(dietWritePool, i as Parameters<typeof updateEntry>[1]))
+  );
+  server.registerTool('diet_delete_entry',
+    { description: 'Soft-delete a diet_consumption row (sets deleted_at). Catering data is not tool-deletable.',
+      inputSchema: z.object({ uuid: z.string().optional(), id: z.number().int().positive().optional() }) },
+    async (i) => text(await deleteEntry(dietWritePool, i as { uuid?: string; id?: number }))
+  );
+  server.registerTool('diet_add_note',
+    { description: "Append a note. scope='day' → daily_logs; 'entry' → a diet_consumption row; 'meal' → a note against a planned catering meal.",
+      inputSchema: z.object({
+        scope: z.enum(['day','entry','meal']), text: z.string().min(1),
+        day: z.string().optional(), tz: z.string().optional(),
+        uuid: z.string().optional(), id: z.number().int().positive().optional(),
+        catering_meal_id: z.number().int().positive().optional(), meal_slot_key: z.string().optional()
+      }) },
+    async (i) => { await dietAddNote(dietWritePool, i as Parameters<typeof dietAddNote>[1]); return text({ ok: true }); }
+  );
+
   return server;
 }
 
@@ -245,6 +314,9 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
   if (!writeDsn) throw new Error('MCP_GYM_WRITER_URL is not set');
   const readPool  = createPool(readDsn);
   const writePool = createPool(writeDsn);
+  const dietDsn = process.env.MCP_DIET_WRITER_URL;
+  if (!dietDsn) throw new Error('MCP_DIET_WRITER_URL is not set');
+  const dietWritePool = createPool(dietDsn);
 
   // createMcpExpressApp defaults to 127.0.0.1 with DNS rebinding protection;
   // pass host '0.0.0.0' so tests can bind to any port without DNS validation errors.
@@ -267,7 +339,7 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
         if (transport!.sessionId) transports.delete(transport!.sessionId);
       };
       // Each session gets its own McpServer so tools/resources are independent.
-      const mcp = buildMcp(readPool, writePool);
+      const mcp = buildMcp(readPool, writePool, dietWritePool);
       await mcp.connect(transport);
     }
 
@@ -290,6 +362,7 @@ export async function startServer(requestedPort: number): Promise<ServerHandle> 
       for (const t of transports.values()) await t.close();
       await readPool.end();
       await writePool.end();
+      await dietWritePool.end();
     }
   };
 }
