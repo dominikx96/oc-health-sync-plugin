@@ -7,8 +7,9 @@ describe('mcp server end-to-end', () => {
 
   beforeAll(async () => {
     process.env.MCP_API_KEY = 'mcp-test-key';
-    process.env.MCP_DATABASE_URL   = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
-    process.env.MCP_GYM_WRITER_URL = 'postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_DATABASE_URL    = 'postgresql://read_user:read_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_GYM_WRITER_URL  = 'postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:54422/postgres';
+    process.env.MCP_DIET_WRITER_URL = 'postgresql://diet_writer_user:diet_writer_pw@127.0.0.1:54422/postgres';
     const handle = await startServer(0);
     close = handle.close;
     port = handle.port;
@@ -73,5 +74,12 @@ describe('mcp server end-to-end', () => {
     expect(text).toMatch(/gym_search_machines/);
     expect(text).toMatch(/gym_create_machine/);
     expect(text).toMatch(/gym_add_note/);
+    expect(text).toMatch(/diet_sync_subscriptions/);
+    expect(text).toMatch(/diet_sync_catering_day/);
+    expect(text).toMatch(/diet_log_meal/);
+    expect(text).toMatch(/diet_log_deviation/);
+    expect(text).toMatch(/diet_update_entry/);
+    expect(text).toMatch(/diet_delete_entry/);
+    expect(text).toMatch(/diet_add_note/);
   });
 });

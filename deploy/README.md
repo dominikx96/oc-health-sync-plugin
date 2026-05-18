@@ -114,3 +114,14 @@ INGEST_API_KEY=my-fixed-key MCP_API_KEY=another \
 ```
 
 Or edit `~/oc-health-sync/.env` after first install and re-run `install.sh` (the `.env` file is preserved across runs).
+
+## Login users and writer URLs
+
+`install.sh` creates two write-limited login users in addition to the read/ingest users:
+
+| User | Role | Env var |
+|---|---|---|
+| `gym_writer_user` | `gym_writer_role` | `MCP_GYM_WRITER_URL` |
+| `diet_writer_user` | `diet_writer_role` | `MCP_DIET_WRITER_URL` |
+
+`MCP_GYM_WRITER_URL` and `MCP_DIET_WRITER_URL` are composed from the generated passwords and injected into the `mcp` container at runtime. The provisioning step (psql block inside `install.sh`) runs on every install and upgrade, so new users are created automatically on first contact.

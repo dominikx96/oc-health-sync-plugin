@@ -24,3 +24,14 @@ GRANT TRUNCATE ON exercises, gyms, gym_machines,
 
 -- daily_logs is owned (writes) by gym_writer_role; allow the local-dev login to TRUNCATE.
 GRANT TRUNCATE ON daily_logs TO gym_writer_user;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'diet_writer_user') THEN
+    CREATE ROLE diet_writer_user LOGIN PASSWORD 'diet_writer_pw' IN ROLE diet_writer_role;
+  END IF;
+END $$;
+
+-- Local-dev convenience: allow diet_writer_user to TRUNCATE diet tables for tests.
+GRANT TRUNCATE ON diet_subscriptions, diet_products, diet_catering_meals,
+                  diet_catering_day, diet_consumption
+  TO diet_writer_user;
