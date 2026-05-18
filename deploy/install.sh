@@ -138,7 +138,7 @@ if [[ "$MODE" == "upgrade" && -f .env ]]; then
   _gym_writer_pw="$(grep '^GYM_WRITER_PASSWORD=' .env | head -1 | cut -d= -f2-)"
   append_env "MCP_GYM_WRITER_URL" "postgresql://gym_writer_user:${_gym_writer_pw}@db:5432/postgres"
   unset _gym_writer_pw
-  # v0.4.0 — diet writer credentials.
+  # v0.5.1 — diet writer credentials.
   if ! grep -q '^DIET_WRITER_PASSWORD=' .env; then
     append_env "DIET_WRITER_PASSWORD" "$(randhex 16)"
   fi
@@ -264,11 +264,17 @@ if [[ "$MODE" == "install" ]]; then
 fi
 
 # --- Migrate (always, fail-fast before any restart) -----------------------
+# `-T` + `</dev/null`: `docker compose run` otherwise attaches the parent
+# stdin. When this script is run via `curl … | bash`, that stdin IS the pipe
+# bash is reading the script from — so `compose run` would swallow the rest
+# of the script and the run would silently end right after migrations
+# (before user provisioning / mcp restart / version commit). Detaching its
+# stdin keeps the documented `curl | bash` one-liner working.
 echo "→ Running migrations"
-dc run --rm \
+dc run --rm -T \
   -e MCP_DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/postgres" \
   --entrypoint /usr/local/bin/migrate \
-  mcp
+  mcp </dev/null
 
 # --- Provision login users (idempotent — runs on install AND upgrade) -----
 # Runs on both modes so a release that adds a new login user (like
