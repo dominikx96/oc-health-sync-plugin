@@ -81,6 +81,7 @@ jobs:
           MCP_DATABASE_URL: postgresql://read_user:read_pw@127.0.0.1:5432/postgres
           MCP_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           MCP_GYM_WRITER_URL: postgresql://gym_writer_user:gym_writer_pw@127.0.0.1:5432/postgres
+          MCP_DIET_WRITER_URL: postgresql://diet_writer_user:diet_writer_pw@127.0.0.1:5432/postgres
         run: npm test
 
       - name: Run deno tests (ingest edge function)
